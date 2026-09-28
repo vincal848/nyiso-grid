@@ -39,11 +39,11 @@ KEYS = ["delivery_date", "ts_utc", "zone", "hour_local", "market", "component"]
 
 def load_run(run_id: str, cols=("mean",)) -> pd.DataFrame:
     path = (EXPERIMENTS_DIR / run_id).as_posix()
-    have = {r[0] for r in duckdb.sql(f"DESCRIBE SELECT * FROM read_parquet('{path}/*.parquet')").fetchall()}
+    have = {r[0] for r in duckdb.sql(f"DESCRIBE SELECT * FROM read_parquet('{path}/fold=*.parquet')").fetchall()}
     cols = [c for c in cols if c in have]
     extra = ", ".join(cols)
     df = duckdb.sql(f"""SELECT {', '.join(KEYS)}, {extra}, y, scored, ref_mean
-                        FROM read_parquet('{(EXPERIMENTS_DIR / run_id).as_posix()}/*.parquet')""").df()
+                        FROM read_parquet('{(EXPERIMENTS_DIR / run_id).as_posix()}/fold=*.parquet')""").df()
     df["delivery_date"] = pd.to_datetime(df["delivery_date"])
     return df
 

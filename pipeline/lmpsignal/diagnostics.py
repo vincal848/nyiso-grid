@@ -18,35 +18,55 @@ from lmpsignal.evaluate import diebold_mariano
 LOSSES = ("crps", "se", "ae")     # CRPS and squared error are primary; absolute error secondary
 
 
+_MEM: dict[str, pd.DataFrame] = {}
+
+
+def run_daily_losses(run_id: str) -> pd.DataFrame:
+    """Per (day, market, component): mean CRPS, squared error and absolute error over scored rows, plus row
+    count. Computed once per run in a single pass over its predictions and cached next to them
+    (data/experiments/<run>/daily_losses.parquet), so reports stay fast as the number of trials grows.
+    Predictions are immutable once a run is done, so the cache never goes stale."""
+    from lmpsignal.evaluate import QCOLS, crps_rows
+
+    if run_id in _MEM:
+        return _MEM[run_id]
+    run_dir = EXPERIMENTS_DIR / run_id
+    cache = run_dir / "daily_losses.parquet"
+    if cache.exists():
+        _MEM[run_id] = pd.read_parquet(cache)
+        return _MEM[run_id]
+    con = duckdb.connect()
+    path = run_dir.as_posix()
+    have = {r[0] for r in con.execute(f"DESCRIBE SELECT * FROM read_parquet('{path}/fold=*.parquet')").fetchall()}
+    qsel = ", " + ", ".join(QCOLS) if set(QCOLS) <= have else ""
+    df = con.execute(f"""SELECT CAST(delivery_date AS DATE) AS day, market, component, y, mean {qsel}
+                         FROM read_parquet('{path}/fold=*.parquet')
+                         WHERE scored AND y IS NOT NULL AND mean IS NOT NULL""").df()
+    y, f = df["y"].to_numpy(float), df["mean"].to_numpy(float)
+    out = pd.DataFrame({"day": df["day"], "market": df["market"], "component": df["component"],
+                        "crps": crps_rows(y, df[QCOLS].to_numpy(float)) if qsel else np.nan,
+                        "se": (y - f) ** 2, "ae": np.abs(y - f)})
+    daily = (out.groupby(["day", "market", "component"])
+                .agg(crps=("crps", lambda x: x.mean() if x.notna().all() else np.nan), se=("se", "mean"),
+                     ae=("ae", "mean"), n=("ae", "size")).reset_index())
+    daily.to_parquet(cache, index=False)
+    _MEM[run_id] = daily
+    return daily
+
+
 def daily_losses(runs: dict[str, str], market: str, component: str = "total",
                  loss: str = "crps") -> tuple[pd.DataFrame, pd.DataFrame]:
     """(T x N daily mean-loss matrix with columns = model names, T x N scored-row counts).
 
     Days where any trial lacks a loss (e.g. no quantiles in a model's first fold) are dropped, so every
     trial is compared on the same days."""
-    from lmpsignal.evaluate import QCOLS, crps_rows
-
-    con = duckdb.connect()
     frames, counts = {}, {}
     for model, rid in runs.items():
-        path = (EXPERIMENTS_DIR / rid).as_posix()
-        have = {r[0] for r in con.execute(f"DESCRIBE SELECT * FROM read_parquet('{path}/*.parquet')").fetchall()}
-        qsel = ", " + ", ".join(QCOLS) if loss == "crps" and set(QCOLS) <= have else ""
-        df = con.execute(f"""SELECT CAST(delivery_date AS DATE) AS day, y, mean {qsel}
-                             FROM read_parquet('{path}/*.parquet')
-                             WHERE scored AND y IS NOT NULL AND mean IS NOT NULL AND market = ? AND component = ?""",
-                         [market, component]).df()
-        if df.empty:
+        d = run_daily_losses(rid)
+        d = d[(d["market"] == market) & (d["component"] == component)].set_index("day")
+        if d.empty:
             continue
-        y, f = df["y"].to_numpy(float), df["mean"].to_numpy(float)
-        if loss == "crps":
-            row = crps_rows(y, df[QCOLS].to_numpy(float)) if qsel else np.full(len(df), np.nan)
-        elif loss == "se":
-            row = (y - f) ** 2
-        else:
-            row = np.abs(y - f)
-        g = pd.DataFrame({"day": df["day"], "l": row}).groupby("day")["l"]
-        frames[model], counts[model] = g.mean(), g.size()
+        frames[model], counts[model] = d[loss], d["n"]
     losses = pd.DataFrame(frames).dropna()
     return losses, pd.DataFrame(counts).reindex(losses.index)
 
