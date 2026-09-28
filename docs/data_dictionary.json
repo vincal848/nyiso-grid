@@ -1,0 +1,886 @@
+{
+  "generated": "2026-09-27 21:37",
+  "conventions": [
+    {
+      "title": "Timestamps",
+      "text": "Every series is keyed on `ts_utc` = interval START in UTC. `ts_local` is the same instant in America/New_York for display. Daily rollups use local calendar days (23/25 hours on DST days)."
+    },
+    {
+      "title": "Interval-ending stamps",
+      "text": "NYISO stamps real-time LBMP (realtime_*) and fuel mix at interval END; the parser shifts them to start (stamp \u2212 5 min in the curated tables). Load, interface flows, constraints, DA and integrated hourly files are stamped at interval START."
+    },
+    {
+      "title": "Fall-back DST day",
+      "text": "Files with a Time Zone column (EDT/EST) are localized from it. Otherwise, per entity in file order, every row after local time steps backward (or repeats) is EST. 'First occurrence = EDT' is wrong: off-grid stamps in the EST hour (e.g. 01:02:48 on 2021-11-07) occur once. Regression test: tests/test_parse.py::test_offgrid_stamps_in_repeated_hour_are_est."
+    },
+    {
+      "title": "Irregular RTD intervals and time weighting",
+      "text": "~4% of real-time intervals are not 5 minutes (delayed RTD runs publish stamps like 02:59:55). Curated tables keep stamps as published. Derived tables rebuild each interval's true [start, end) from the neighbouring stamp (gaps > 15 min are treated as missing data with a nominal 5-min interval) and time-weight onto 5-min/hourly buckets (store/timeweight.py). Verified: reproduces NYISO's integrated hourly RT LBMP to the cent in every hour 2021\u20132024. Averages over derived tables should weight by covered_s."
+    },
+    {
+      "title": "Price components",
+      "text": "LBMP = energy + mlc \u2212 mcc (verified: energy is identical across all zones in an interval). A negative mcc means congestion raises the local price."
+    },
+    {
+      "title": "Accepted data flags",
+      "text": "lbmp_zone_hourly.rt_flag marks hours where NYISO's integrated RT differs from its own 5-min data (2025-05-27 19:00\u201321:00: NYISO 5-min intervals missing; the latest hour at download time). Values are kept as published."
+    },
+    {
+      "title": "Known NYISO archive gaps",
+      "text": "rt_lbmp_node: 2026-08-01..26 missing (map falls back to hourly). rt_lbmp_zone_hourly: 2026-07-01..20 missing (filled, rt_source='derived_twa'). btm_solar: ~20 whole days missing. Full per-day detail: data/coverage.parquet."
+    },
+    {
+      "title": "Dashboard KPI definitions",
+      "text": "Price = simple average of the 11 internal zones' RT LBMP (not load-weighted; GridStatus uses a slightly different figure). Net load = load \u2212 wind. Main source = largest fuel at the selected interval."
+    },
+    {
+      "title": "Zone boundaries",
+      "text": "No openly licensed NYISO zone boundary file exists (NYPA's ArcGIS layer forbids redistribution). zones.geojson assigns Census counties to zones by majority vote of generator nodes, with overrides (Putnam\u2192HUD VL, Livingston\u2192GENESE, Westchester split at 41.13\u00b0N into MILLWD/DUNWOD). Approximate; drop an official file at data/ref/zones_override.geojson to replace it."
+    },
+    {
+      "title": "Node mapping",
+      "text": "Only generator nodes have coordinates. 561 of 758 priced nodes are mapped; the rest lack coordinates or are retired units absent from the current generator.csv."
+    },
+    {
+      "title": "As-of availability",
+      "text": "Forecast issue time for D+1 = 05:00 ET on D\u22121 (NYISO DAM bid deadline, MST 4.2; results post by 11:00). ISOLF file dated F is posted ~07:05\u201308:20 ET on F (MIS P-7 index), so it is usable from 08:30 ET on F: a 05:00 D\u22121 issue may only use the ISOLF file of D\u22122. DA prices for D\u22121 are known from 11:00 on D\u22122. RT data is known up to its interval end. Henry Hub for trade date T: 00:00 ET on T+1. Weather obs: hour + 30 min. Weather forecasts: see weather_fcst.available_utc. Outage schedules: first_seen_utc. External tables carry available_utc explicitly."
+    },
+    {
+      "title": "Licensing",
+      "text": "NYISO MIS, NOAA and EIA data are public. weather_fcst comes from Open-Meteo's free, non-commercial API and is for research/backtesting only; replace it with a licensed forecast source before any live trading use."
+    },
+    {
+      "title": "Units",
+      "text": "Prices $/MWh; power MW (MIS labels some flow/limit columns 'MWH' \u2014 they are interval rates in MW); shares are fractions 0\u20131."
+    }
+  ],
+  "files": {
+    "data/raw/<dataset>/<YYYYMM>.zip": "Immutable cache of NYISO MIS monthly archives (one CSV per day). Never edited; delete a file to force re-download.",
+    "data/raw/<dataset>/daily/<YYYYMMDD>.csv": "Daily-file fallback for days missing from a monthly archive.",
+    "data/curated/<dataset>/year=YYYY/month=MM/part.parquet": "Parsed, typed, deduplicated data (zstd). One file per source month; the curated views read these. Rebuild with `nyiso backfill --rebuild`.",
+    "data/nyiso.duckdb": "Views over curated Parquet + derived tables. Disposable; `nyiso build` recreates it.",
+    "data/ref/nodes.parquet": "Generator nodes (see table `nodes`).",
+    "data/ref/loads.parquet": "Load points: name, ptid, subzone, zone (no coordinates are published).",
+    "data/ref/zones.geojson": "APPROXIMATE zone polygons (county-based; see conventions: zone boundaries).",
+    "data/ref/reference_report.json": "Counts of mapped/unmapped nodes from `nyiso reference`.",
+    "data/coverage.parquet": "Per dataset per local day: intervals present vs expected, coverage fraction (`nyiso validate`)."
+  },
+  "tables": {
+    "da_lbmp_zone": {
+      "layer": "curated",
+      "description": "Day-ahead LBMP by zone.",
+      "grain": "hourly",
+      "key": [
+        "ts_utc",
+        "ptid"
+      ],
+      "source": "MIS damlbmp/*damlbmp_zone.csv",
+      "notes": [],
+      "rows": 656640,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-29 03:00:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
+        "ptid": "NYISO Point ID: numeric identifier of a pricing location (zone, generator node) or interface.",
+        "lbmp": "Locational Based Marginal Price. LBMP = energy + mlc \u2212 mcc (verified). [$/MWh]",
+        "mlc": "Marginal cost of losses component of LBMP (added). [$/MWh]",
+        "mcc": "Marginal cost of congestion component, NYISO sign: SUBTRACTED from LBMP, so a negative mcc means congestion raises the price at this location (verified). [$/MWh]"
+      }
+    },
+    "da_lbmp_node": {
+      "layer": "curated",
+      "description": "Day-ahead LBMP by generator node (~750 nodes).",
+      "grain": "hourly",
+      "key": [
+        "ts_utc",
+        "ptid"
+      ],
+      "source": "MIS damlbmp/*damlbmp_gen.csv",
+      "notes": [],
+      "rows": 30252490,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-29 03:00:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "node": "Generator pricing-node name as published (e.g. '59TH STREET_GT_1'). Join to `nodes` via ptid.",
+        "ptid": "NYISO Point ID: numeric identifier of a pricing location (zone, generator node) or interface.",
+        "lbmp": "Locational Based Marginal Price. LBMP = energy + mlc \u2212 mcc (verified). [$/MWh]",
+        "mlc": "Marginal cost of losses component of LBMP (added). [$/MWh]",
+        "mcc": "Marginal cost of congestion component, NYISO sign: SUBTRACTED from LBMP, so a negative mcc means congestion raises the price at this location (verified). [$/MWh]"
+      }
+    },
+    "rt_lbmp_zone": {
+      "layer": "curated",
+      "description": "Real-time LBMP by zone, per RTD interval.",
+      "grain": "5-min (irregular)",
+      "key": [
+        "ts_utc",
+        "ptid"
+      ],
+      "source": "MIS realtime/*realtime_zone.csv",
+      "notes": [
+        "Published per RTD interval, stamped at interval END (shifted to start). ~4% of intervals are not 5 minutes; do not average rows naively \u2014 use the time-weighted tables or store/timeweight.py."
+      ],
+      "rows": 8043300,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 23:25:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
+        "ptid": "NYISO Point ID: numeric identifier of a pricing location (zone, generator node) or interface.",
+        "lbmp": "Locational Based Marginal Price. LBMP = energy + mlc \u2212 mcc (verified). [$/MWh]",
+        "mlc": "Marginal cost of losses component of LBMP (added). [$/MWh]",
+        "mcc": "Marginal cost of congestion component, NYISO sign: SUBTRACTED from LBMP, so a negative mcc means congestion raises the price at this location (verified). [$/MWh]"
+      }
+    },
+    "rt_lbmp_node": {
+      "layer": "curated",
+      "description": "Real-time LBMP by generator node, per RTD interval. Largest dataset (~365M rows).",
+      "grain": "5-min (irregular)",
+      "key": [
+        "ts_utc",
+        "ptid"
+      ],
+      "source": "MIS realtime/*realtime_gen.csv",
+      "notes": [
+        "Published per RTD interval, stamped at interval END (shifted to start). ~4% of intervals are not 5 minutes; do not average rows naively \u2014 use the time-weighted tables or store/timeweight.py.",
+        "NYISO archive is missing 2026-08-01..26; the map falls back to rt_lbmp_node_hourly."
+      ],
+      "rows": 364560784,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 23:40:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "node": "Generator pricing-node name as published (e.g. '59TH STREET_GT_1'). Join to `nodes` via ptid.",
+        "ptid": "NYISO Point ID: numeric identifier of a pricing location (zone, generator node) or interface.",
+        "lbmp": "Locational Based Marginal Price. LBMP = energy + mlc \u2212 mcc (verified). [$/MWh]",
+        "mlc": "Marginal cost of losses component of LBMP (added). [$/MWh]",
+        "mcc": "Marginal cost of congestion component, NYISO sign: SUBTRACTED from LBMP, so a negative mcc means congestion raises the price at this location (verified). [$/MWh]"
+      }
+    },
+    "rt_lbmp_zone_hourly": {
+      "layer": "curated",
+      "description": "NYISO integrated (time-weighted hourly) real-time LBMP by zone.",
+      "grain": "hourly",
+      "key": [
+        "ts_utc",
+        "ptid"
+      ],
+      "source": "MIS rtlbmp/*rtlbmp_zone.csv",
+      "notes": [
+        "NYISO archive is missing 2026-07-01..20; lbmp_zone_hourly fills those hours from 5-min data."
+      ],
+      "rows": 649350,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 21:00:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
+        "ptid": "NYISO Point ID: numeric identifier of a pricing location (zone, generator node) or interface.",
+        "lbmp": "Locational Based Marginal Price. LBMP = energy + mlc \u2212 mcc (verified). [$/MWh]",
+        "mlc": "Marginal cost of losses component of LBMP (added). [$/MWh]",
+        "mcc": "Marginal cost of congestion component, NYISO sign: SUBTRACTED from LBMP, so a negative mcc means congestion raises the price at this location (verified). [$/MWh]"
+      }
+    },
+    "rt_lbmp_node_hourly": {
+      "layer": "curated",
+      "description": "NYISO integrated (hourly) real-time LBMP by generator node.",
+      "grain": "hourly",
+      "key": [
+        "ts_utc",
+        "ptid"
+      ],
+      "source": "MIS rtlbmp/*rtlbmp_gen.csv",
+      "notes": [],
+      "rows": 30235408,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 21:00:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "node": "Generator pricing-node name as published (e.g. '59TH STREET_GT_1'). Join to `nodes` via ptid.",
+        "ptid": "NYISO Point ID: numeric identifier of a pricing location (zone, generator node) or interface.",
+        "lbmp": "Locational Based Marginal Price. LBMP = energy + mlc \u2212 mcc (verified). [$/MWh]",
+        "mlc": "Marginal cost of losses component of LBMP (added). [$/MWh]",
+        "mcc": "Marginal cost of congestion component, NYISO sign: SUBTRACTED from LBMP, so a negative mcc means congestion raises the price at this location (verified). [$/MWh]"
+      }
+    },
+    "load": {
+      "layer": "curated",
+      "description": "Actual load by zone (PAL).",
+      "grain": "5-min (irregular)",
+      "key": [
+        "ts_utc",
+        "ptid"
+      ],
+      "source": "MIS pal/*pal.csv",
+      "notes": [
+        "Stamped at interval START. 11 internal zones; no system total row (see load_5m)."
+      ],
+      "rows": 5898794,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 20:50:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
+        "ptid": "NYISO Point ID: numeric identifier of a pricing location (zone, generator node) or interface.",
+        "load_mw": "Actual load (NYISO PAL), as published. [MW]"
+      }
+    },
+    "load_forecast": {
+      "layer": "curated",
+      "description": "NYISO load forecast by zone, every published issue.",
+      "grain": "hourly per issue",
+      "key": [
+        "ts_utc",
+        "zone",
+        "issue_date"
+      ],
+      "source": "MIS isolf/*isolf.csv (wide file melted to long)",
+      "notes": [
+        "Each issue covers the issue day plus 5 days ahead (horizon 0\u20135 days, verified). For a day-ahead forecast use load_forecast_da."
+      ],
+      "rows": 3151008,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-10-04 03:00:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "zone": "Zone name upper-cased from the ISOLF header, plus 'NYISO' = system total.",
+        "load_forecast_mw": "NYISO load forecast (ISOLF) for the hour. [MW]",
+        "issue_date": "Date the forecast file was published (the MIS file date). [date]"
+      }
+    },
+    "fuel_mix": {
+      "layer": "curated",
+      "description": "Real-time generation by fuel category.",
+      "grain": "5-min (irregular)",
+      "key": [
+        "ts_utc",
+        "fuel"
+      ],
+      "source": "MIS rtfuelmix/*rtfuelmix.csv",
+      "notes": [
+        "Published per RTD interval, stamped at interval END (shifted to start). ~4% of intervals are not 5 minutes; do not average rows naively \u2014 use the time-weighted tables or store/timeweight.py."
+      ],
+      "rows": 3752756,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 20:40:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "fuel": "NYISO fuel category: Dual Fuel, Natural Gas, Nuclear, Hydro, Wind, Other Renewables (includes grid-scale solar and biomass), Other Fossil Fuels.",
+        "gen_mw": "Generation by fuel category. [MW]"
+      }
+    },
+    "btm_solar": {
+      "layer": "curated",
+      "description": "Behind-the-meter solar, estimated actual, by zone.",
+      "grain": "hourly",
+      "key": [
+        "ts_utc",
+        "zone"
+      ],
+      "source": "MIS btmactualforecast/*BTMEstimatedActual.csv",
+      "notes": [
+        "Reported separately from load_mw; net load in this project does not subtract it. NYISO is missing ~20 whole days."
+      ],
+      "rows": 518532,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 03:00:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "zone": "Internal zone name, or 'SYSTEM' = NYCA total (equals the sum of zones, verified).",
+        "mw": "Behind-the-meter solar estimated actual output. [MW]"
+      }
+    },
+    "da_constraints": {
+      "layer": "curated",
+      "description": "Day-ahead binding transmission constraints.",
+      "grain": "hourly, binding only",
+      "key": [
+        "ts_utc",
+        "facility",
+        "contingency"
+      ],
+      "source": "MIS DAMLimitingConstraints/*DAMLimitingConstraints.csv",
+      "notes": [
+        "Only binding (facility, contingency) pairs are listed; absence = not binding."
+      ],
+      "rows": 187958,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-29 03:00:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "facility": "Limiting transmission facility (constraint) name as published.",
+        "facility_ptid": "PTID of the limiting facility.",
+        "contingency": "Contingency under which the facility binds ('BASE CASE' = no contingency).",
+        "shadow_price": "Constraint shadow price as published in the 'Constraint Cost($)' column. Sign as published, not normalized; both signs occur. [$/MWh]"
+      }
+    },
+    "rt_constraints": {
+      "layer": "curated",
+      "description": "Real-time binding transmission constraints.",
+      "grain": "5-min, binding only",
+      "key": [
+        "ts_utc",
+        "facility",
+        "contingency"
+      ],
+      "source": "MIS LimitingConstraints/*LimitingConstraints.csv",
+      "notes": [
+        "Only binding intervals are listed. Stamped at interval START."
+      ],
+      "rows": 835016,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 21:05:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "facility": "Limiting transmission facility (constraint) name as published.",
+        "facility_ptid": "PTID of the limiting facility.",
+        "contingency": "Contingency under which the facility binds ('BASE CASE' = no contingency).",
+        "shadow_price": "Constraint shadow price as published in the 'Constraint Cost($)' column. Sign as published, not normalized; both signs occur. [$/MWh]"
+      }
+    },
+    "interface_flows": {
+      "layer": "curated",
+      "description": "Interface flows and limits (internal interfaces and external lines).",
+      "grain": "5-min (irregular)",
+      "key": [
+        "ts_utc",
+        "interface"
+      ],
+      "source": "MIS ExternalLimitsFlows/*ExternalLimitsFlows.csv",
+      "notes": [
+        "Stamped at interval START. Positive direction is NYISO's defined direction for each interface (not re-derived here)."
+      ],
+      "rows": 9579444,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 21:10:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "interface": "Interface name, e.g. 'CENTRAL EAST - VC', 'TOTAL EAST', or scheduled external lines 'SCH - PJ - NY'.",
+        "ptid": "Interface Point ID.",
+        "flow_mw": "Interface flow as published (MIS labels it MWH; it is a rate for the interval). [MW]",
+        "pos_limit_mw": "Positive-direction interface limit. \u00b19999 means no limit is enforced. [MW]",
+        "neg_limit_mw": "Negative-direction interface limit. \u00b19999 means no limit is enforced. [MW]"
+      }
+    },
+    "da_asp": {
+      "layer": "curated",
+      "description": "Day-ahead ancillary service prices by zone.",
+      "grain": "hourly",
+      "key": [
+        "ts_utc",
+        "ptid"
+      ],
+      "source": "MIS damasp/*damasp.csv",
+      "notes": [
+        "Reserve prices spike under scarcity; a leading indicator of RT price spikes."
+      ],
+      "rows": 481536,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-29 03:00:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
+        "ptid": "NYISO Point ID: numeric identifier of a pricing location (zone, generator node) or interface.",
+        "spin_10": "10-minute spinning reserve price. [$/MWh]",
+        "nonsync_10": "10-minute non-synchronous reserve price. [$/MWh]",
+        "or_30": "30-minute operating reserve price. [$/MWh]",
+        "reg_cap": "NYCA regulation capacity price. [$/MWh]"
+      }
+    },
+    "rt_asp": {
+      "layer": "curated",
+      "description": "Real-time ancillary service prices by zone, per RTD interval.",
+      "grain": "5-min (irregular)",
+      "key": [
+        "ts_utc",
+        "ptid"
+      ],
+      "source": "MIS rtasp/*rtasp.csv",
+      "notes": [
+        "Published per RTD interval, stamped at interval END (shifted to start). ~4% of intervals are not 5 minutes; do not average rows naively \u2014 use the time-weighted tables or store/timeweight.py."
+      ],
+      "rows": 5899421,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-28 01:00:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
+        "ptid": "NYISO Point ID: numeric identifier of a pricing location (zone, generator node) or interface.",
+        "spin_10": "10-minute spinning reserve price. [$/MWh]",
+        "nonsync_10": "10-minute non-synchronous reserve price. [$/MWh]",
+        "or_30": "30-minute operating reserve price. [$/MWh]",
+        "reg_cap": "NYCA regulation capacity price. [$/MWh]",
+        "reg_move": "NYCA regulation movement price ($/MW)."
+      }
+    },
+    "sched_outages": {
+      "layer": "curated",
+      "description": "Scheduled transmission outages as published over time (point-in-time).",
+      "grain": "validity runs",
+      "key": [
+        "ptid",
+        "equipment",
+        "sched_out_utc",
+        "sched_in_utc",
+        "first_seen_utc"
+      ],
+      "source": "MIS schedlineoutages/*SCLineOutages.csv (schedule re-published every 5 min; compacted)",
+      "notes": [
+        "To get the schedule known at time t: first_seen_utc <= t <= last_seen_utc. Runs are split at month boundaries and at publishing gaps > 15 min.",
+        "Ambiguous fall-back local times in sched_out/in are read as EDT (no marker published)."
+      ],
+      "rows": 5512081,
+      "first": null,
+      "last": null,
+      "columns": {
+        "ptid": "Equipment Point ID.",
+        "equipment": "Transmission equipment name as published (line, transformer, breaker).",
+        "sched_out_utc": "Scheduled outage start (published local time -> UTC).",
+        "sched_in_utc": "Scheduled return to service. For outages in progress NYISO rolls this forward hourly, so one outage appears as several records.",
+        "first_seen_utc": "First snapshot in which this exact record appeared (start of a validity run). [UTC timestamp]",
+        "last_seen_utc": "Last snapshot in which this exact record appeared (end of a validity run). The record was part of the published schedule for all t in [first_seen_utc, last_seen_utc]. [UTC timestamp]",
+        "snapshots": "Number of snapshots in the validity run."
+      }
+    },
+    "rt_line_outages": {
+      "layer": "curated",
+      "description": "Transmission equipment out of service in real time (point-in-time).",
+      "grain": "validity runs",
+      "key": [
+        "ptid",
+        "equipment",
+        "outage_start_utc",
+        "first_seen_utc"
+      ],
+      "source": "MIS realtimelineoutages/*RTLineOutages.csv (compacted snapshots)",
+      "notes": [],
+      "rows": 147283,
+      "first": null,
+      "last": null,
+      "columns": {
+        "ptid": "Equipment Point ID.",
+        "equipment": "Transmission equipment name as published (line, transformer, breaker).",
+        "outage_start_utc": "When the equipment went out (UTC).",
+        "first_seen_utc": "First snapshot in which this exact record appeared (start of a validity run). [UTC timestamp]",
+        "last_seen_utc": "Last snapshot in which this exact record appeared (end of a validity run). The record was part of the published schedule for all t in [first_seen_utc, last_seen_utc]. [UTC timestamp]",
+        "snapshots": "Number of snapshots in the validity run."
+      }
+    },
+    "gas_henry_hub": {
+      "layer": "curated",
+      "description": "Henry Hub natural gas spot price (EIA).",
+      "grain": "daily (trade days)",
+      "key": [
+        "trade_date"
+      ],
+      "source": "EIA RNGWHHD (hist_xls/RNGWHHDd.xls); public domain",
+      "notes": [
+        "available_utc = 00:00 ET on the day after the trade date (backtest rule). EIA itself posts weekly; live use needs a same-day source.",
+        "EIA's NYMEX futures series (RNGC1-4) stopped on 2024-04-05, so there is no free gas forward curve; long-horizon energy norms need another source."
+      ],
+      "rows": 1241,
+      "first": null,
+      "last": null,
+      "columns": {
+        "trade_date": "Gas trade date (spot for next-day flow). [date]",
+        "price_usd_mmbtu": "Henry Hub natural gas spot price. [$/MMBtu]",
+        "available_utc": "Earliest time this value could have been known (UTC). As-of joins must filter available_utc <= issue time. See conventions: as-of availability. [UTC timestamp]"
+      }
+    },
+    "weather_obs": {
+      "layer": "curated",
+      "description": "Hourly weather observations at NY stations (NOAA GHCNh).",
+      "grain": "hourly",
+      "key": [
+        "ts_utc",
+        "station"
+      ],
+      "source": "NOAA NCEI GHCNh by-year PSV; public domain",
+      "notes": [
+        "Physically implausible values are dropped; GHCNh quality codes are not otherwise filtered."
+      ],
+      "rows": 478163,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-24 22:00:00",
+      "columns": {
+        "ts_utc": "Observation hour (UTC); reports within \u00b130 min of the hour are averaged.",
+        "station": "Weather station code (config.WEATHER_STATIONS: BUF, ROC, SYR, MSS, ART, ALB, POU, HPN, LGA, JFK, ISP), each mapped to one or more NYISO zones.",
+        "temp_c": "Air temperature at 2 m. [\u00b0C]",
+        "dewpoint_c": "Dew point temperature (\u00b0C).",
+        "wind_ms": "Wind speed (m/s).",
+        "n_reports": "Number of station reports averaged into the hour.",
+        "available_utc": "Earliest time this value could have been known (UTC). As-of joins must filter available_utc <= issue time. See conventions: as-of availability. [UTC timestamp]"
+      }
+    },
+    "weather_fcst": {
+      "layer": "curated",
+      "description": "GFS 2 m temperature forecasts by lead time (forecast vintages).",
+      "grain": "hourly x lead",
+      "key": [
+        "ts_utc",
+        "station",
+        "lead_days"
+      ],
+      "source": "Open-Meteo previous-runs API, model pinned to gfs_seamless. RESEARCH USE ONLY (non-commercial licence)",
+      "notes": [
+        "Only GFS temperature is archived back to 2021; other variables start 2024, so v1 uses temperature only to keep the feature consistent across the training history.",
+        "Upstream gap: no lead 1-7 forecasts for valid times 2023-12-30 .. 2024-01-19 (lead 0 only). As-of features are NULL there by design; models must handle missing temperature."
+      ],
+      "rows": 3806748,
+      "first": "2021-10-01 00:00:00",
+      "last": "2026-09-27 23:00:00",
+      "columns": {
+        "ts_utc": "Valid (forecast target) hour, UTC.",
+        "station": "Weather station code (config.WEATHER_STATIONS: BUF, ROC, SYR, MSS, ART, ALB, POU, HPN, LGA, JFK, ISP), each mapped to one or more NYISO zones.",
+        "lead_days": "Forecast made lead_days x 24 h before the valid hour (0 = latest run, ~analysis).",
+        "temp_c": "Forecast 2 m temperature (\u00b0C).",
+        "available_utc": "valid \u2212 lead_days \u00d7 24 h + 6 h model latency (conservative); lead 0: valid + 6 h."
+      }
+    },
+    "rt_lbmp_zone_5m": {
+      "layer": "derived",
+      "description": "Real-time zonal LBMP time-weighted onto the 5-minute grid.",
+      "grain": "5-min",
+      "key": [
+        "ts_utc",
+        "zone"
+      ],
+      "source": "rt_lbmp_zone via store/timeweight.py",
+      "notes": [],
+      "rows": 7874055,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 23:25:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
+        "lbmp": "Locational Based Marginal Price. LBMP = energy + mlc \u2212 mcc (verified). [$/MWh]",
+        "mlc": "Marginal cost of losses component of LBMP (added). [$/MWh]",
+        "mcc": "Marginal cost of congestion component, NYISO sign: SUBTRACTED from LBMP, so a negative mcc means congestion raises the price at this location (verified). [$/MWh]",
+        "covered_s": "Seconds of the output bucket covered by data (300 = complete 5-min bucket, 3600 = complete hour). Weight for further time-weighted averaging. [seconds]"
+      }
+    },
+    "fuel_mix_5m": {
+      "layer": "derived",
+      "description": "Fuel mix time-weighted onto the 5-minute grid.",
+      "grain": "5-min",
+      "key": [
+        "ts_utc",
+        "fuel"
+      ],
+      "source": "fuel_mix via store/timeweight.py",
+      "notes": [],
+      "rows": 3674279,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 20:40:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "fuel": "NYISO fuel category: Dual Fuel, Natural Gas, Nuclear, Hydro, Wind, Other Renewables (includes grid-scale solar and biomass), Other Fossil Fuels.",
+        "gen_mw": "Generation by fuel category. [MW]",
+        "covered_s": "Seconds of the output bucket covered by data (300 = complete 5-min bucket, 3600 = complete hour). Weight for further time-weighted averaging. [seconds]"
+      }
+    },
+    "load_zone_5m": {
+      "layer": "derived",
+      "description": "Zonal load time-weighted onto the 5-minute grid.",
+      "grain": "5-min",
+      "key": [
+        "ts_utc",
+        "zone"
+      ],
+      "source": "load via store/timeweight.py (start-stamped)",
+      "notes": [],
+      "rows": 5774296,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 20:50:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
+        "load_mw": "Actual load (NYISO PAL), as published. [MW]",
+        "covered_s": "Seconds of the output bucket covered by data (300 = complete 5-min bucket, 3600 = complete hour). Weight for further time-weighted averaging. [seconds]"
+      }
+    },
+    "load_5m": {
+      "layer": "derived",
+      "description": "load_zone_5m plus a system total row.",
+      "grain": "5-min",
+      "key": [
+        "ts_utc",
+        "zone"
+      ],
+      "source": "load_zone_5m",
+      "notes": [],
+      "rows": 6299232,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 20:50:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "zone": "Internal zone, or 'NYISO' = sum of the 11 zones.",
+        "load_mw": "Actual load (NYISO PAL), as published. [MW]",
+        "covered_s": "Seconds covered; for 'NYISO' the minimum across zones."
+      }
+    },
+    "system_5m": {
+      "layer": "derived",
+      "description": "System-level series for the Conditions tab.",
+      "grain": "5-min",
+      "key": [
+        "ts_utc"
+      ],
+      "source": "load_5m, fuel_mix_5m, rt_lbmp_zone_5m",
+      "notes": [],
+      "rows": 524936,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 20:50:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "load_mw": "NYISO total load.",
+        "covered_s": "Seconds of the output bucket covered by data (300 = complete 5-min bucket, 3600 = complete hour). Weight for further time-weighted averaging. [seconds]",
+        "net_load_mw": "Load minus wind (GridStatus convention). NULL until fuel mix is posted.",
+        "rt_lbmp": "Simple average of the 11 internal zones' time-weighted RT LBMP ($/MWh). Not load-weighted; not a NYISO-published figure."
+      }
+    },
+    "lbmp_zone_hourly": {
+      "layer": "derived",
+      "description": "Hourly DA and RT LBMP by zone side by side, with DA\u2212RT spread.",
+      "grain": "hourly",
+      "key": [
+        "ts_utc",
+        "zone"
+      ],
+      "source": "da_lbmp_zone, rt_lbmp_zone_hourly, rt_lbmp_zone_5m",
+      "notes": [
+        "Rows exist for tomorrow's DA hours with NULL RT."
+      ],
+      "rows": 656640,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-29 03:00:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
+        "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
+        "da_lbmp": "Day-ahead LBMP ($/MWh).",
+        "da_mlc": "Day-ahead loss component ($/MWh).",
+        "da_mcc": "Day-ahead congestion component, NYISO sign ($/MWh).",
+        "rt_lbmp": "Real-time hourly LBMP ($/MWh); see rt_source.",
+        "rt_mlc": "Real-time loss component ($/MWh).",
+        "rt_mcc": "Real-time congestion component, NYISO sign ($/MWh).",
+        "rt_source": "'integrated' = NYISO's published hourly value; 'derived_twa' = time-weighted from 5-min intervals because NYISO's hourly file is missing (2026-07-01..20).",
+        "rt_flag": "NULL = OK. 'integrated_vs_5m_mismatch' = NYISO's integrated value differs from its own 5-min data by \u2265 $0.02 (NYISO-side missing intervals or an hour in progress at download). Accepted; value kept as published.",
+        "da_rt_spread": "da_lbmp \u2212 rt_lbmp ($/MWh). Positive = DA priced above RT."
+      }
+    },
+    "fuel_mix_hourly": {
+      "layer": "derived",
+      "description": "Hourly time-weighted generation by fuel.",
+      "grain": "hourly",
+      "key": [
+        "ts_utc",
+        "fuel"
+      ],
+      "source": "fuel_mix_5m",
+      "notes": [],
+      "rows": 306215,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 20:00:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "fuel": "NYISO fuel category: Dual Fuel, Natural Gas, Nuclear, Hydro, Wind, Other Renewables (includes grid-scale solar and biomass), Other Fossil Fuels.",
+        "gen_mw": "Generation by fuel category. [MW]"
+      }
+    },
+    "load_hourly": {
+      "layer": "derived",
+      "description": "Hourly time-weighted load by zone (incl. 'NYISO' total).",
+      "grain": "hourly",
+      "key": [
+        "ts_utc",
+        "zone"
+      ],
+      "source": "load_5m",
+      "notes": [],
+      "rows": 524940,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 20:00:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
+        "load_mw": "Actual load (NYISO PAL), as published. [MW]"
+      }
+    },
+    "load_forecast_da": {
+      "layer": "derived",
+      "description": "Day-ahead load forecast: the value issued the calendar day before the target local day.",
+      "grain": "hourly",
+      "key": [
+        "ts_utc",
+        "zone"
+      ],
+      "source": "load_forecast",
+      "notes": [],
+      "rows": 525312,
+      "first": "2021-10-02 04:00:00",
+      "last": "2026-09-30 03:00:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
+        "load_forecast_mw": "NYISO load forecast (ISOLF) for the hour. [MW]"
+      }
+    },
+    "interface_flows_hourly": {
+      "layer": "derived",
+      "description": "Hourly time-weighted interface flows and limits.",
+      "grain": "hourly",
+      "key": [
+        "ts_utc",
+        "interface"
+      ],
+      "source": "interface_flows via store/timeweight.py (start-stamped)",
+      "notes": [],
+      "rows": 792840,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-09-27 21:00:00",
+      "columns": {
+        "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
+        "interface": "Interface name, e.g. 'CENTRAL EAST - VC', 'TOTAL EAST', or scheduled external lines 'SCH - PJ - NY'.",
+        "flow_mw": "Interface flow as published (MIS labels it MWH; it is a rate for the interval). [MW]",
+        "pos_limit_mw": "Positive-direction interface limit. \u00b19999 means no limit is enforced. [MW]",
+        "neg_limit_mw": "Negative-direction interface limit. \u00b19999 means no limit is enforced. [MW]",
+        "covered_s": "Seconds of the output bucket covered by data (300 = complete 5-min bucket, 3600 = complete hour). Weight for further time-weighted averaging. [seconds]"
+      }
+    },
+    "constraints_daily": {
+      "layer": "derived",
+      "description": "Binding constraints summarized per local day.",
+      "grain": "daily",
+      "key": [
+        "market",
+        "day",
+        "facility",
+        "contingency"
+      ],
+      "source": "da_constraints, rt_constraints",
+      "notes": [],
+      "rows": 48425,
+      "first": "2021-10-01",
+      "last": "2026-09-28",
+      "columns": {
+        "market": "'DA' (day-ahead) or 'RT' (real-time).",
+        "day": "Calendar day in America/New_York (local day boundaries, so DST days have 23 or 25 hours). [date]",
+        "facility": "Limiting transmission facility (constraint) name as published.",
+        "contingency": "Contingency under which the facility binds ('BASE CASE' = no contingency).",
+        "intervals": "Number of binding intervals (hours for DA, RTD intervals for RT).",
+        "hours_binding": "DA: intervals. RT: intervals \u00d7 5/60 \u2014 assumes nominal 5-min intervals (approximation; RT constraint rows are not time-weighted).",
+        "sum_cost": "Sum of shadow_price over binding intervals ($/MWh summed; sign as published).",
+        "max_abs_cost": "Largest |shadow_price| ($/MWh).",
+        "avg_cost": "Mean shadow_price over binding intervals ($/MWh)."
+      }
+    },
+    "daily_summary": {
+      "layer": "derived",
+      "description": "One row per local day: KPIs used by the dashboard and Trends.",
+      "grain": "daily",
+      "key": [
+        "day"
+      ],
+      "source": "system_5m, lbmp_zone_hourly, fuel_mix_5m",
+      "notes": [],
+      "rows": 1823,
+      "first": "2021-10-01",
+      "last": "2026-09-27",
+      "columns": {
+        "day": "Calendar day in America/New_York (local day boundaries, so DST days have 23 or 25 hours). [date]",
+        "avg_load_mw": "Time-weighted average NYISO load (MW).",
+        "peak_load_mw": "Maximum 5-min NYISO load (MW).",
+        "avg_net_load_mw": "Time-weighted average load minus wind (MW).",
+        "avg_da_lbmp": "Mean hourly DA LBMP over hours \u00d7 11 internal zones ($/MWh).",
+        "avg_rt_lbmp": "Mean hourly RT LBMP over hours \u00d7 11 internal zones ($/MWh); same basis as DA.",
+        "main_source": "Fuel with the highest average generation that day.",
+        "avg_gen_mw": "Time-weighted average total generation across fuel categories (MW).",
+        "renewable_share": "(Wind + Hydro + Other Renewables) / total generation (fraction 0\u20131). Excludes BTM solar.",
+        "carbon_free_share": "renewable_share plus Nuclear (fraction 0\u20131)."
+      }
+    },
+    "fuel_mix_daily": {
+      "layer": "derived",
+      "description": "Daily average generation by fuel, including BTM solar.",
+      "grain": "daily",
+      "key": [
+        "day",
+        "fuel"
+      ],
+      "source": "fuel_mix_5m, btm_solar",
+      "notes": [],
+      "rows": 14563,
+      "first": "2021-10-01",
+      "last": "2026-09-27",
+      "columns": {
+        "day": "Calendar day in America/New_York (local day boundaries, so DST days have 23 or 25 hours). [date]",
+        "fuel": "NYISO fuel category, plus 'BTM Solar' (from btm_solar SYSTEM).",
+        "avg_mw": "Time-weighted daily average (MW)."
+      }
+    },
+    "lbmp_zone_daily": {
+      "layer": "derived",
+      "description": "Daily average DA/RT LBMP and spread by zone.",
+      "grain": "daily",
+      "key": [
+        "day",
+        "zone"
+      ],
+      "source": "lbmp_zone_hourly",
+      "notes": [],
+      "rows": 27360,
+      "first": "2021-10-01",
+      "last": "2026-09-28",
+      "columns": {
+        "day": "Calendar day in America/New_York (local day boundaries, so DST days have 23 or 25 hours). [date]",
+        "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
+        "avg_da_lbmp": "Mean of hourly DA LBMP ($/MWh).",
+        "avg_rt_lbmp": "Mean of hourly RT LBMP ($/MWh).",
+        "avg_spread": "Mean of hourly DA \u2212 RT ($/MWh)."
+      }
+    },
+    "nodes": {
+      "layer": "reference",
+      "description": "Generator nodes with coordinates (data/ref/nodes.parquet).",
+      "grain": "one row per generator",
+      "key": [
+        "ptid"
+      ],
+      "source": "MIS generator/generator.csv (current list; retired units are absent)",
+      "notes": [],
+      "rows": 832,
+      "first": null,
+      "last": null,
+      "columns": {
+        "ptid": "NYISO Point ID: numeric identifier of a pricing location (zone, generator node) or interface.",
+        "name": "Generator name (matches `node` in LBMP tables).",
+        "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
+        "subzone": "Transmission-owner subzone, e.g. 'CON ED NY CITY'.",
+        "lat": "Latitude (WGS84) as published; NULL for ~270 generators.",
+        "lon": "Longitude (WGS84) as published.",
+        "active": "Generator flagged active by NYISO.",
+        "aggregation_ptid": "PTID of the aggregation the unit prices under, if any.",
+        "has_prices": "True if the PTID appears in da_lbmp_node history."
+      }
+    }
+  }
+}
