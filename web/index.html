@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NYISO Grid</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="title-row">
+      <h1>New York ISO</h1>
+      <span id="coverage-badge" class="badge" title="Data coverage (nyiso validate)"></span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="conditions" class="active">Conditions</button>
+      <button role="tab" data-tab="pricing">Pricing</button>
+      <button role="tab" data-tab="constraints">Constraints</button>
+      <button role="tab" data-tab="trends">Trends</button>
+      <button role="tab" data-tab="signal">Signal</button>
+      <div class="spacer"></div>
+      <div class="date-ctl" id="date-ctl">
+        <button id="d-first" title="First day">|&lsaquo;</button>
+        <button id="d-prev" title="Previous day">&lsaquo;</button>
+        <input type="date" id="d-input">
+        <button id="d-next" title="Next day">&rsaquo;</button>
+        <button id="d-last" title="Latest day">&rsaquo;|</button>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ================= CONDITIONS ================= -->
+    <section id="tab-conditions" class="tab-panel active">
+      <div class="kpis">
+        <div class="kpi"><div class="kpi-label">Load</div><div class="kpi-value" id="k-load">–</div></div>
+        <div class="kpi"><div class="kpi-label">Net Load</div><div class="kpi-value" id="k-net">–</div></div>
+        <div class="kpi"><div class="kpi-label">Price</div><div class="kpi-value" id="k-price">–</div></div>
+        <div class="kpi"><div class="kpi-label">Main Source</div><div class="kpi-value" id="k-source">–</div></div>
+      </div>
+      <div class="kpi-sub" id="k-at"></div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head"><h2>Fuel Mix - NYISO</h2></div>
+          <div id="c-fuel" class="chart"></div>
+        </div>
+        <div class="card map-card">
+          <div id="map"></div>
+          <div class="map-legend" id="map-legend"></div>
+          <div class="map-opts">
+            <label><input type="radio" name="mkt" value="rt5" checked> RT 5-min</label>
+            <label><input type="radio" name="mkt" value="da"> DA</label>
+            <label><input type="checkbox" id="zone-shade" checked> Zones</label>
+          </div>
+          <div class="scrubber">
+            <span id="scrub-time">–</span>
+            <button id="scrub-play" title="Play">&#9654;</button>
+            <input type="range" id="scrub" min="0" max="0" value="0">
+            <span class="muted small" id="scrub-note"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= PRICING ================= -->
+    <section id="tab-pricing" class="tab-panel">
+      <div class="toolbar">
+        <label>Zone <select id="p-zone"></select></label>
+      </div>
+      <div class="grid-2">
+        <div class="card"><div class="card-head"><h2 id="p-title">Zonal LBMP</h2></div><div id="c-price" class="chart"></div></div>
+        <div class="card"><div class="card-head"><h2>DA − RT spread (hourly)</h2></div><div id="c-spread" class="chart"></div></div>
+      </div>
+      <div class="card"><div class="card-head"><h2>Integrated RT LBMP by zone and hour ($/MWh)</h2></div><div id="c-heat" class="chart tall"></div></div>
+    </section>
+
+    <!-- ================= CONSTRAINTS ================= -->
+    <section id="tab-constraints" class="tab-panel">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head"><h2>Binding constraints</h2>
+            <div class="seg" id="con-mkt"><button data-v="DA" class="active">DA</button><button data-v="RT">RT</button></div>
+          </div>
+          <div class="table-wrap"><table id="t-con"><thead><tr>
+            <th>Facility</th><th>Contingency</th><th class="num">Hours</th><th class="num">Σ cost</th><th class="num">Max |cost|</th>
+          </tr></thead><tbody></tbody></table></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Interface flow vs limits</h2><select id="f-iface"></select></div>
+          <div id="c-flow" class="chart"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= TRENDS ================= -->
+    <section id="tab-trends" class="tab-panel">
+      <div class="toolbar">
+        <div class="seg" id="tr-range">
+          <button data-v="90">90D</button><button data-v="365" class="active">1Y</button>
+          <button data-v="730">2Y</button><button data-v="all">All</button>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="card"><div class="card-head"><h2>Daily load (MW)</h2></div><div id="c-tload" class="chart"></div></div>
+        <div class="card"><div class="card-head"><h2>Daily average price, internal zones ($/MWh)</h2></div><div id="c-tprice" class="chart"></div></div>
+      </div>
+      <div class="card"><div class="card-head"><h2>Fuel mix share (daily average)</h2></div><div id="c-tfuel" class="chart"></div></div>
+    </section>
+    <!-- ================= SIGNAL (forecasting pipeline outputs) ================= -->
+    <section id="tab-signal" class="tab-panel">
+      <div class="toolbar">
+        <div class="seg" id="sig-mkt"><button data-v="da" class="active">DA</button><button data-v="rt">RT</button></div>
+        <label>Fold <select id="sig-fold"></select></label>
+        <label>Constraint <select id="sig-key"></select></label>
+        <span class="muted small" id="sig-src"></span>
+      </div>
+      <div class="grid-2">
+        <div class="card map-card">
+          <div id="sigmap"></div>
+          <div class="map-legend" id="sig-legend"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Top constraints (training window)</h2></div>
+          <div class="table-wrap"><table id="t-sig"><thead><tr>
+            <th class="num">#</th><th>Constraint | contingency</th><th class="num">Bind rate</th><th class="num">Σ|shadow|</th><th>Most sensitive zone</th>
+          </tr></thead><tbody></tbody></table></div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="card"><div class="card-head"><h2>Constraint co-binding graph</h2></div><div id="c-cobind" class="chart"></div></div>
+        <div class="card"><div class="card-head"><h2>Month-over-month structural drift</h2></div><div id="c-drift" class="chart"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2 id="fan-title">Forecast distribution vs actual</h2>
+          <div class="toolbar" style="margin:0">
+            <label>Model <select id="fan-model"></select></label>
+            <label>Zone <select id="fan-zone"></select></label>
+            <label>Component <select id="fan-comp"><option>total</option><option>congestion</option><option>energy</option><option>loss</option></select></label>
+          </div>
+        </div>
+        <div id="c-fan" class="chart"></div>
+        <div class="muted small">Validation forecasts (issued 05:00 ET on D−1) exist for 2022-10-01 → 2025-09-30; pick a date in that range.</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot muted small">
+    Data: NYISO MIS public archives. Zone boundaries are approximate (county-based). Basemap © OpenFreeMap © OpenMapTiles © OpenStreetMap contributors.
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="app.js"></script>
+  <script src="signal.js"></script>
+</body>
+</html>
