@@ -232,7 +232,7 @@ def _coverage_section(runs: dict[str, str]) -> list[str]:
     for model, rid in runs.items():
         for mkt in ("da", "rt"):
             d = duckdb.sql(f"""SELECT ts_utc, zone, hour_local, y, {', '.join(QCOLS)}
-                               FROM read_parquet('{(EXPERIMENTS_DIR / rid).as_posix()}/*.parquet')
+                               FROM read_parquet('{(EXPERIMENTS_DIR / rid).as_posix()}/fold=*.parquet')
                                WHERE scored AND y IS NOT NULL AND market = '{mkt}' AND component = 'total'""").df()
             if d[QCOLS].notna().all(axis=1).any():
                 rows.append({"model": model, "market": mkt, **coverage_tests(d)})
