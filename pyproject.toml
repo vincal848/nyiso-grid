@@ -1,0 +1,37 @@
+[project]
+name = "nyiso-grid"
+version = "0.1.0"
+description = "NYISO historical data warehouse and GridStatus-style dashboard"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "duckdb>=1.1",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "typer>=0.12",
+    "tqdm>=4.66",
+    "shapely>=2.0",
+    "pytz>=2024.1",
+    "xlrd>=2.0.1",
+    "scikit-learn>=1.5",
+    "lightgbm>=4.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+nyiso = "nyiso.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nyiso"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
