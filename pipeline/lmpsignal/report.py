@@ -214,6 +214,9 @@ def _runs_section(runs: dict[str, str]) -> list[str]:
                              FROM runs WHERE run_id IN ({ids}) ORDER BY model""").df()
         tried = con.execute("SELECT status, count(*) AS runs, count(DISTINCT config_hash) AS configs FROM runs GROUP BY 1").df()
     out = ["## Runs and reproducibility", "", _md(df.astype(object).where(df.notna(), "—")), ""]
+    if df["git_commit"].isna().any():
+        out += ["> git_commit “—”: the run predates the repository's first commit (2026-09-28 15:25 ET), so it "
+                "is identified by code_fingerprint only; no commit reproduces it exactly.", ""]
     for col, what in (("code_fingerprint", "code"), ("data_fingerprint", "panel data")):
         vals = df[col].dropna().unique()
         if len(vals) > 1:

@@ -14,7 +14,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from nyiso.datasets import BACKFILL_ORDER, DATASETS
-from nyiso.ingest.mis_client import is_current_month, iter_month_files
+from nyiso.ingest.mis_client import iter_month_files, may_be_incomplete
 from nyiso.ingest.parse import compact_snapshots, dedupe, parse_csv
 from nyiso.store.writer import partition_path, write_month
 
@@ -46,7 +46,8 @@ def months_between(start: str, end: str) -> list[tuple[int, int]]:
 def run_task(key: str, year: int, month: int, rebuild: bool = False) -> TaskResult:
     ds = DATASETS[key]
     res = TaskResult(key, year, month)
-    if partition_path(key, year, month).exists() and not rebuild and not is_current_month(year, month):
+    part = partition_path(key, year, month)
+    if part.exists() and not rebuild and not may_be_incomplete(part, year, month):
         res.skipped = True
         return res
     try:

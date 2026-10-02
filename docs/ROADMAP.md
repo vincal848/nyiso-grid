@@ -11,6 +11,17 @@ phase; this phase builds the probabilistic LMP signal._
 - **M2 (first pass)**: LEAR and LightGBM. DA total MAE: LEAR 6.30 vs 7.97 for yesterday's DA (−21%).
   RT: LightGBM-L1 −8%. Neither beats persistence on congestion or in the top-5% RT spike hours.
   90%/98% intervals cover 88% and 95–96%.
+- **M2.5**: post-processing layer (`lmp post`: clip / combine / ACI over stored predictions), LEAR v2
+  (shared Gram matrix, time-ordered penalty, 56-day window, per-window outputs), cross-family combination,
+  adaptive conformal intervals, spike/normal splits and Kupiec/Christoffersen tests. Best:
+  `combo3_eq_aci` (clipped LEAR + LightGBM-L1, equal weights, ACI): DA total CRPS 4.43 vs 6.51 for
+  yesterday's DA (beats it in 35 of 36 folds); RT total CRPS 10.75 vs 11.22, but the RT squared-error gain
+  is not significant (DM p = 0.18). 90% intervals now cover 90%; 98% intervals miss ~3% with clustered
+  misses (Christoffersen p ≈ 0), which is M4's job.
+- **M3 (first version)**: `struct_cong` / `struct_cong_l2`, a hurdle model per binding constraint without
+  outage information. `struct_cong` wins MAE on congestion but loses on RMSE/CRPS to LEAR v2; `struct_cong_l2`
+  is worse than persistence. RT congestion is still roughly tied with `zero_congestion` on CRPS.
+- **Holdout data complete** (2026-10-02): warehouse and panel cover 2025-10-01..2026-09-30. Still locked.
 
 ## Metric decision (2026-09-28)
 Primary scores are **CRPS** (whole predictive distribution) and **RMSE** (conditional mean); MAE is
