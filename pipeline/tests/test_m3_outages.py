@@ -67,3 +67,30 @@ def test_lift_uses_only_the_days_it_is_given():
     bind2[60:] = ~bind2[60:]                                              # change outcomes after the training days
     b = OutageMap(lists, min_days=3).fit_lift(keys, days[:60], bind2[:60])
     pd.testing.assert_frame_equal(a, b)
+
+
+def test_crossfit_lift_features_never_use_their_own_block_labels():
+    """With outage_lift='crossfit', a training block's lift features must not change when that block's
+    binding outcomes change (they come from a table fit on the other blocks)."""
+    from lmpsignal.structural.congestion import StructuralCongestion
+
+    days = pd.date_range("2024-01-01", "2024-04-30", freq="D")
+    keys = ["ASTANNEX 138 ASTORIAE 138 1 | BASE CASE", "SCRIBA   345 VOLNEY   345 1 | SCRIBA__-VOLNEY___345_21"]
+    rng = np.random.default_rng(4)
+    rows = [{"market": "da", "d": d, "hr": h, "key": k, "mu": 5.0}
+            for d in days for h in range(24) for k in keys if rng.random() < 0.3]
+    M = StructuralCongestion(k=2, outage_map=True, outage_lift="crossfit", lift_blocks=4)
+    idx = pd.MultiIndex.from_product([days, range(24)], names=["delivery_date", "hour_local"])
+    M.sys = pd.DataFrame({"load_fcst_nyiso": 1.0, "temp_fcst_nyiso": 1.0, "gas_hh": 1.0, "dow": 1, "month": 1}, index=idx)
+    M.outages = pd.DataFrame({"n_outages": 1, "n_outages_345": 1}, index=days)
+    M.omap = OutageMap(_lists(pd.date_range("2023-12-31", "2024-04-30"), rng), min_days=3)
+    train = days[40:]                                         # leave 40 days of history for the lag features
+    M.sp = pd.DataFrame(rows)
+    base = M._train_features("da", keys, train, None)
+    block0 = np.array_split(np.arange(len(train)), 4)[0]
+    flipped = M.sp[~M.sp["d"].isin(train[block0])]           # remove every binding event in block 0
+    M.sp = flipped
+    after = M._train_features("da", keys, train, None)
+    n0 = len(block0) * 24 * len(keys)
+    for c in ("lift_max", "lift_min"):
+        np.testing.assert_array_equal(base[c].to_numpy()[:n0], after[c].to_numpy()[:n0])

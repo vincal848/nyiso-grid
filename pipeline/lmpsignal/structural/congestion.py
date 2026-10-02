@@ -26,6 +26,14 @@ DAM outage list of D-1 (see structural/outages.py): counts of name-matched outag
 (facility side and contingency side) and the largest positive / most negative learned binding lift among
 equipment expected out. The lift table is fit on the same training days as the hurdle (pseudo-OOS stage:
 first 80% of the window; final: whole window), so nothing from the validation month leaks in.
+
+`outage_lift` controls how training rows get their lift features:
+  "crossfit" (default): the training window is cut into `lift_blocks` contiguous blocks and each block's rows use
+      a lift table fit on the other blocks, so the classifier never sees a lift computed from its own labels.
+      Forecast rows use the table fit on the whole window.
+  "insample": training rows use the whole-window table (first M3 diagnostic, 2026-10-02: the classifier
+      over-trusted the lift and binding log loss got worse in all 12 fold x market cells).
+  "none": name-matched counts only, no learned lift.
 """
 from __future__ import annotations
 
@@ -46,12 +54,13 @@ EXO = ["load_fcst_nyiso", "temp_fcst_nyiso", "gas_hh"]
 class StructuralCongestion(Model):
     def __init__(self, k: int = 60, window_days: int = 365, ridge: float = 1.0, n_estimators: int = 300,
                  blend_loss: str = "lad", name: str = "struct_cong", node_factors: bool = True,
-                 outage_map: bool = False):
+                 outage_map: bool = False, outage_lift: str = "crossfit", lift_blocks: int = 5):
         self.k, self.window_days, self.ridge, self.n_estimators = k, window_days, ridge, n_estimators
         self.blend_loss = blend_loss          # "lad" (median, original) or "l2" (conditional mean)
         self.name = name
         self.node_factors = node_factors
         self.outage_map = outage_map
+        self.outage_lift, self.lift_blocks = outage_lift, lift_blocks
         self.diag: list[dict] = []
         self._art: dict[str, list[pd.DataFrame]] = {}
 
@@ -63,7 +72,8 @@ class StructuralCongestion(Model):
                            "congestion D-2 for RT); weights from pseudo-OOS forecasts on the last 20% of the training window",
                 "rt_shadow_hourly": "sum x 5/60 (nominal intervals)",
                 **({"outage_map": "DAM outage list of D-1 (P-54C): name-matched counts (facility, contingency) + "
-                                  "learned binding lift (shrink 20, >= 10 days out, <= 90% of days), fit in-fold"}
+                                  "learned binding lift (shrink 20, >= 10 days out, <= 90% of days), fit in-fold",
+                    "outage_lift": self.outage_lift + (f" ({self.lift_blocks} blocks)" if self.outage_lift == "crossfit" else "")}
                    if self.outage_map else {})}
 
     # ------------------------------------------------------------------------------------------ data
@@ -126,7 +136,8 @@ class StructuralCongestion(Model):
         out["n_outages"], out["n_outages_345"] = oc["n_outages"].to_numpy(), oc["n_outages_345"].to_numpy()
         if self.outage_map:
             for name, v in self.omap.features(keys, days, lift).items():
-                out[name] = v.reshape(-1)
+                if self.outage_lift != "none" or name in ("out_fac", "out_ctg"):
+                    out[name] = v.reshape(-1)
         return out
 
     # ------------------------------------------------------------------------------------------ pieces
@@ -145,14 +156,27 @@ class StructuralCongestion(Model):
         return np.linalg.solve(X[ok].T @ X[ok] + self.ridge * np.eye(len(keys)), X[ok].T @ Y[ok])
 
     def _outage_lift(self, m, keys, days):
-        if not self.outage_map:
+        if not self.outage_map or self.outage_lift == "none":
             return None
         bind_daily = (self._mu_cube(m, keys, days) != 0).any(axis=1)
         return self.omap.fit_lift(keys, days, bind_daily)
 
+    def _train_features(self, m, keys, days, lift):
+        """Training-row features. With cross-fitted lift each contiguous block uses a table fit on the other
+        blocks (rows stay in day order, matching the label cube)."""
+        if not self.outage_map or self.outage_lift != "crossfit":
+            return self._features(m, keys, days, lift)
+        bind_daily = (self._mu_cube(m, keys, days) != 0).any(axis=1)
+        parts = []
+        for block in np.array_split(np.arange(len(days)), self.lift_blocks):
+            rest = np.setdiff1d(np.arange(len(days)), block)
+            lift_b = self.omap.fit_lift(keys, days[rest], bind_daily[rest])
+            parts.append(self._features(m, keys, days[block], lift_b))
+        return pd.concat(parts, ignore_index=True)
+
     def _hurdle_fit(self, m, keys, days):
         lift = self._outage_lift(m, keys, days)
-        F = self._features(m, keys, days, lift)
+        F = self._train_features(m, keys, days, lift)
         y_mu = self._mu_cube(m, keys, days).reshape(-1)
         bind = (y_mu != 0).astype(int)
         cols = [c for c in F.columns if c != "d"]
@@ -161,6 +185,7 @@ class StructuralCongestion(Model):
         clf = lgb.LGBMClassifier(min_child_samples=100, **kw).fit(F[cols], bind)
         lo_, hi_ = np.percentile(y_mu[bind == 1], [0.5, 99.5])
         reg = lgb.LGBMRegressor(min_child_samples=50, **kw).fit(F.loc[bind == 1, cols], np.clip(y_mu[bind == 1], lo_, hi_))
+        self._last_importance = pd.Series(clf.booster_.feature_importance("gain"), index=cols)
         return clf, reg, cols, lift
 
     def _hurdle_pred(self, m, keys, days, clf, reg, cols, lift=None):
@@ -213,11 +238,13 @@ class StructuralCongestion(Model):
             clf, reg, cols, lift = self._hurdle_fit(m, keys, days)
             self.models[m] = dict(keys=keys, A=A, zones=zones, clf=clf, reg=reg, feat_cols=cols, coefs=coefs, lift=lift)
             self._record_fit(m, keys, days, zones, A, coefs)
-            if lift is not None:
-                self._add("outage_constraint_lift", lift.assign(market=m, window_start=days.min(), window_end=days.max()))
-                imp = pd.Series(clf.booster_.feature_importance("gain"), index=cols)
+            imp = self._last_importance
+            self.models[m]["importance"] = imp
+            if self.outage_map:
                 self._add("bind_feature_importance", pd.DataFrame({"market": m, "feature": imp.index,
                                                                    "gain": imp.to_numpy()}))
+            if lift is not None:
+                self._add("outage_constraint_lift", lift.assign(market=m, window_start=days.min(), window_end=days.max()))
         return self
 
     # ------------------------------------------------------------------------------------------ artifacts
@@ -273,7 +300,7 @@ class StructuralCongestion(Model):
                 "key": F["key"].astype(str).to_numpy(), "p_bind": p_bind,
                 "shadow_if_bind": M["reg"].predict(F[M["feat_cols"]]), "shadow_forecast": mu_hat.reshape(-1),
                 "shadow_actual": actual_mu,
-                **({c: F[c].to_numpy() for c in ("out_fac", "out_ctg", "lift_max", "lift_min")} if self.outage_map else {})}))
+                **{c: F[c].to_numpy() for c in ("out_fac", "out_ctg", "lift_max", "lift_min") if c in F}}))
             Xb = self._blend_inputs(m, days, M["zones"], mu_hat @ M["A"])
             cong = np.stack([M["coefs"][z][0] + Xb[:, :, j, :] @ M["coefs"][z][1] for j, z in enumerate(M["zones"])],
                             axis=-1)
@@ -295,5 +322,6 @@ class StructuralCongestion(Model):
                               "logloss": float(-np.mean(actual * np.log(pb) + (1 - actual) * np.log(1 - pb))),
                               "logloss_clim": float(-np.mean(actual * np.log(clim) + (1 - actual) * np.log(1 - clim))),
                               "blend_weight_mean": w.mean(axis=0).round(3).tolist(),
+                              "bind_gain_share": (M["importance"] / M["importance"].sum()).nlargest(8).round(3).to_dict(),
                               "blend_inputs": ["structural", "DA cong D-1"] + (["RT cong D-2"] if m == "rt" else [])})
         return to_long(test, means)
