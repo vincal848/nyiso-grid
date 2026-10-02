@@ -10,6 +10,7 @@ Availability rules (see docs/DATA.md "As-of availability"):
   RT hourly price ........... interval end + 15 min
   ISOLF issue F ............. 08:30 ET on F   (so a 05:00 D-1 issue uses the D-2 file)
   weather_fcst / gas ........ their available_utc column
+  weather_hrrr .............. available_utc = 06z run on D-1 + 2 h
 """
 from __future__ import annotations
 
@@ -59,8 +60,31 @@ FEATURES: dict[str, tuple[str, str]] = {
     "temp_fcst_nyiso": ("Same, averaged over all 11 stations (°C).", "weather_fcst.available_utc"),
     "hdh_zone": ("Heating degree-hours: max(0, 18.3 − temp_fcst_zone).", "as temp_fcst_zone"),
     "cdh_zone": ("Cooling degree-hours: max(0, temp_fcst_zone − 18.3).", "as temp_fcst_zone"),
+    "temp_fcst_zone_isolf": ("GFS 2 m temperature forecast for the delivery hour as available when the ISOLF file used "
+                             "(D-2) was published, 08:30 ET on D-2: roughly the weather NYISO's forecast was built on (°C). "
+                             "External zones use all stations.", "weather_fcst.available_utc <= 08:30 ET D-2"),
+    **{f"hrrr_{c}_zone": (f"HRRR 06z (D-1) forecast for the delivery hour, zone {d}. NULL for external zones.",
+                          "weather_hrrr.available_utc (06z D-1 + 2 h)")
+       for c, d in (("temp", "mean 2 m temperature (°C)"), ("dewpoint", "mean 2 m dew point (°C)"),
+                    ("wind80", "mean 80 m wind speed (m/s)"), ("cloud", "mean total cloud cover (%)"),
+                    ("cape", "90th-percentile surface CAPE (J/kg)"),
+                    ("refl40", "share of cells with composite reflectivity >= 40 dBZ"),
+                    ("lightning", "mean lightning flash density"))},
+    **{f"hrrr_temp_zone_d{s}": (f"{n} of hrrr_temp_zone over delivery day D (°C): daily level for thermal inertia.",
+                                "as hrrr_temp_zone") for s, n in (("mean", "Mean"), ("max", "Max"), ("min", "Min"))},
+    "hrrr_temp_nyiso": ("Mean over the 11 internal zones of hrrr_temp_zone (°C).", "as hrrr_temp_zone"),
+    "hrrr_cape_nyiso_max": ("Max over internal zones of hrrr_cape_zone for the hour (J/kg).", "as hrrr_temp_zone"),
+    "hrrr_refl40_nyiso_max": ("Max over internal zones of hrrr_refl40_zone for the hour.", "as hrrr_temp_zone"),
+    "hrrr_lightning_nyiso_max": ("Max over internal zones of hrrr_lightning_zone for the hour.", "as hrrr_temp_zone"),
     "gas_hh": ("Latest Henry Hub spot price available at issue time ($/MMBtu).", "gas_henry_hub.available_utc"),
     "implied_hr_d1": ("da_d1_mean / gas_hh: implied market heat rate of D-1 (MMBtu/MWh).", "max of inputs"),
+}
+
+# Named feature sets, so adding panel columns never silently changes an existing model configuration.
+_WEATHER_V2 = ("temp_fcst_zone_isolf",) + tuple(c for c in FEATURES if c.startswith("hrrr_"))
+FEATURE_SETS: dict[str, list[str]] = {
+    "v1": [c for c in FEATURES if c not in _WEATHER_V2],      # panel as of M2-M3 (2026-09-28)
+    "v2": list(FEATURES),                                       # + HRRR weather and ISOLF-vintage GFS (2026-10-02)
 }
 
 KEYS = ["delivery_date", "ts_utc", "ts_local", "zone", "issue_utc"]
@@ -128,6 +152,36 @@ FROM wx w JOIN station_zone sz USING (station) GROUP BY ALL;
 CREATE OR REPLACE TEMP TABLE wx_sys AS
 SELECT ts_utc, issue_utc, avg(temp_c) AS temp, max(available_utc) AS avail FROM wx GROUP BY ALL;
 
+-- the same GFS forecast as known when the ISOLF file in use (D-2, 08:30 ET) was published
+CREATE OR REPLACE TEMP TABLE wxi_need AS
+SELECT DISTINCT ts_utc, delivery_date,
+       timezone({ET}, CAST(delivery_date - INTERVAL 2 DAY AS TIMESTAMP) + INTERVAL 510 MINUTE) AS isolf_utc
+FROM base;
+CREATE OR REPLACE TEMP TABLE wxi AS
+SELECT n.ts_utc, n.isolf_utc, f.station, f.temp_c, f.available_utc
+FROM wxi_need n CROSS JOIN (SELECT DISTINCT station FROM station_zone) s
+ASOF JOIN (SELECT * FROM wh.weather_fcst ORDER BY available_utc) f
+  ON f.ts_utc = n.ts_utc AND f.station = s.station AND n.isolf_utc >= f.available_utc;
+CREATE OR REPLACE TEMP TABLE wxi_zone AS
+SELECT w.ts_utc, sz.zone, avg(w.temp_c) AS temp, max(w.available_utc) AS avail
+FROM wxi w JOIN station_zone sz USING (station) GROUP BY ALL;
+CREATE OR REPLACE TEMP TABLE wxi_sys AS SELECT ts_utc, avg(temp_c) AS temp, max(available_utc) AS avail FROM wxi GROUP BY ALL;
+
+-- HRRR 06z D-1 run, zone aggregates; as-of joined on its availability
+CREATE OR REPLACE TEMP TABLE hr AS
+SELECT b.ts_utc, b.zone, b.delivery_date, h.temp_c, h.dewpoint_c, h.wind80_ms, h.cloud_pct, h.cape_p90,
+       h.refl40_share, h.lightning_density, h.available_utc
+FROM (SELECT DISTINCT ts_utc, zone, delivery_date, issue_utc FROM base) b
+ASOF JOIN (SELECT * FROM wh.weather_hrrr ORDER BY available_utc) h
+  ON h.ts_utc = b.ts_utc AND h.zone = b.zone AND b.issue_utc >= h.available_utc;
+CREATE OR REPLACE TEMP TABLE hr_day AS
+SELECT zone, delivery_date, avg(temp_c) AS tmean, max(temp_c) AS tmax, min(temp_c) AS tmin, max(available_utc) AS avail
+FROM hr GROUP BY ALL;
+CREATE OR REPLACE TEMP TABLE hr_sys AS
+SELECT ts_utc, avg(temp_c) AS temp, max(cape_p90) AS cape, max(refl40_share) AS refl, max(lightning_density) AS ltng,
+       max(available_utc) AS avail
+FROM hr GROUP BY ALL;
+
 CREATE OR REPLACE TEMP TABLE hol AS SELECT * FROM holidays;
 
 CREATE OR REPLACE TABLE panel AS
@@ -170,6 +224,14 @@ SELECT
     -- weather forecast
     coalesce(wz.temp, ws.temp) AS temp_fcst_zone, ws.temp AS temp_fcst_nyiso,
     greatest(0, 18.3 - coalesce(wz.temp, ws.temp)) AS hdh_zone, greatest(0, coalesce(wz.temp, ws.temp) - 18.3) AS cdh_zone,
+    coalesce(wiz.temp, wis.temp) AS temp_fcst_zone_isolf,
+    -- HRRR (06z D-1)
+    hr.temp_c AS hrrr_temp_zone, hr.dewpoint_c AS hrrr_dewpoint_zone, hr.wind80_ms AS hrrr_wind80_zone,
+    hr.cloud_pct AS hrrr_cloud_zone, hr.cape_p90 AS hrrr_cape_zone, hr.refl40_share AS hrrr_refl40_zone,
+    hr.lightning_density AS hrrr_lightning_zone,
+    hd.tmean AS hrrr_temp_zone_dmean, hd.tmax AS hrrr_temp_zone_dmax, hd.tmin AS hrrr_temp_zone_dmin,
+    hs.temp AS hrrr_temp_nyiso, hs.cape AS hrrr_cape_nyiso_max, hs.refl AS hrrr_refl40_nyiso_max,
+    hs.ltng AS hrrr_lightning_nyiso_max,
     -- fuel
     gas.price_usd_mmbtu AS gas_hh, d1.da_mean / nullif(gas.price_usd_mmbtu, 0) AS implied_hr_d1,
     -- scoring masks
@@ -183,6 +245,8 @@ SELECT
     rtl.avail_utc AS _avail_rt_latest,
     greatest(lfz.avail_utc, lfn.avail_utc, lfn_day.avail) AS _avail_load_fcst,
     greatest(wz.avail, ws.avail) AS _avail_temp_fcst,
+    greatest(wiz.avail, wis.avail) AS _avail_temp_fcst_isolf,
+    greatest(hr.available_utc, hd.avail, hs.avail) AS _avail_hrrr,
     gas.available_utc AS _avail_gas
 FROM base b
 LEFT JOIN px p1 ON p1.zone = b.zone AND p1.d = b.delivery_date - INTERVAL 1 DAY AND p1.hr = b.hour_local
@@ -196,6 +260,11 @@ LEFT JOIN lfn ON lfn.ts_utc = b.ts_utc
 LEFT JOIN lfn_day ON lfn_day.d = b.delivery_date
 LEFT JOIN wx_zone wz ON wz.ts_utc = b.ts_utc AND wz.zone = b.zone
 LEFT JOIN wx_sys ws ON ws.ts_utc = b.ts_utc
+LEFT JOIN wxi_zone wiz ON wiz.ts_utc = b.ts_utc AND wiz.zone = b.zone
+LEFT JOIN wxi_sys wis ON wis.ts_utc = b.ts_utc
+LEFT JOIN hr ON hr.ts_utc = b.ts_utc AND hr.zone = b.zone
+LEFT JOIN hr_day hd ON hd.zone = b.zone AND hd.delivery_date = b.delivery_date
+LEFT JOIN hr_sys hs ON hs.ts_utc = b.ts_utc
 LEFT JOIN gas ON gas.issue_utc = b.issue_utc
 LEFT JOIN hol ON hol.d = b.delivery_date
 ORDER BY b.ts_utc, b.zone;

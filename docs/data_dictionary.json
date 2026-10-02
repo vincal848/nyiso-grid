@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-02 13:22",
+  "generated": "2026-10-02 15:38",
   "conventions": [
     {
       "title": "Timestamps",
@@ -581,6 +581,38 @@
         "lead_days": "Forecast made lead_days x 24 h before the valid hour (0 = latest run, ~analysis).",
         "temp_c": "Forecast 2 m temperature (\u00b0C).",
         "available_utc": "valid \u2212 lead_days \u00d7 24 h + 6 h model latency (conservative); lead 0: valid + 6 h."
+      }
+    },
+    "weather_hrrr": {
+      "layer": "curated",
+      "description": "NOAA HRRR 06z forecasts for the next delivery day, aggregated to NYISO zones.",
+      "grain": "hourly x zone (one run per delivery day)",
+      "key": [
+        "ts_utc",
+        "zone"
+      ],
+      "source": "HRRR v4 via the University of Utah Zarr archive on AWS Open Data (s3://hrrrzarr); public domain",
+      "notes": [
+        "Raw cache keeps only the cells inside NYISO zones (data/raw/hrrr/runs/YYYYMMDD.npz, float16).",
+        "Shortwave radiation is not included: the Zarr archive stores it for some runs only.",
+        "Zone polygons are approximate (county-based); external zones are not covered."
+      ],
+      "rows": 480733,
+      "first": "2021-10-01 04:00:00",
+      "last": "2026-10-03 03:00:00",
+      "columns": {
+        "ts_utc": "Valid time of the (instantaneous) forecast, UTC; the delivery day's local hours.",
+        "zone": "NYISO internal zone (cells inside the approximate zone polygon).",
+        "run_utc": "Model run (initialization) time: 06:00 UTC on the day before delivery.",
+        "lead_h": "Forecast hour (valid \u2212 run).",
+        "temp_c": "Zone-mean 2 m temperature (\u00b0C).",
+        "dewpoint_c": "Zone-mean 2 m dew point (\u00b0C).",
+        "wind80_ms": "Zone-mean 80 m wind speed (m/s), hub-height proxy.",
+        "cloud_pct": "Zone-mean total cloud cover (%).",
+        "cape_p90": "90th percentile over the zone's cells of surface CAPE (J/kg): convective instability.",
+        "refl40_share": "Share of the zone's cells with composite reflectivity >= 40 dBZ (heavy convection).",
+        "lightning_density": "Zone-mean forecast lightning flash density (HRRR LTNG, flashes km\u207b\u00b2 5 min\u207b\u00b9).",
+        "available_utc": "run_utc + 2 h (the 06z run completes ~07:50 UTC); before the 05:00 ET issue."
       }
     },
     "rt_lbmp_zone_5m": {

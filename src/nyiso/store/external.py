@@ -34,6 +34,10 @@ def run(sources: list[str] | None = None, start: str = DEFAULT_START, end: date 
             df = df[df["ts_utc"] >= pd.Timestamp(start_d, tz="America/New_York")]
         elif key == "weather_fcst":
             df = external.weather_fcst(start_d, end_d)
+        elif key == "weather_hrrr":
+            from nyiso.ingest import hrrr
+
+            df = hrrr.weather_hrrr(start_d, end_d)
         else:
             raise ValueError(f"unknown external source {key}")
         parts = _write_by_month(df, key, external.EXTERNAL[key].time_col)

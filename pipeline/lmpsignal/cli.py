@@ -80,6 +80,23 @@ def train(
     typer.echo(f"{model} -> {rid or '(smoke test, not logged)'} in {time.time() - t:.0f}s")
 
 
+@app.command()
+def loadfix(
+    kind: str = typer.Argument(..., help="lin (classical per-zone ridge) or gbm (LightGBM)"),
+    smoke: int = typer.Option(0, help="Run only the first N folds WITHOUT logging (not a trial)"),
+):
+    """Weather-to-load correction of the ISOLF D-2 forecast, scored on the validation folds."""
+    import time
+
+    from lmpsignal import cv, loadfix as lf, panel
+    from lmpsignal.config import VALIDATION_END
+
+    t = time.time()
+    p = panel.load(end=VALIDATION_END)
+    rid = lf.run(kind, p, folds=cv.folds()[:smoke] if smoke else None, log=not smoke)
+    typer.echo(f"loadfix_{kind} -> {rid or '(smoke test, not logged)'} in {time.time() - t:.0f}s")
+
+
 POST_PRESETS = {
     # name: (parent model names, steps)
     "lear_clip": (["lear"], [{"op": "clip"}, {"op": "calibrate", "method": "oos_residual"}]),

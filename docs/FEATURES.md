@@ -57,6 +57,21 @@ Issue time: 05:00 ET on D−1 for delivery day D (anchor horizon h0).
 | `temp_fcst_nyiso` | Same, averaged over all 11 stations (°C). | weather_fcst.available_utc |
 | `hdh_zone` | Heating degree-hours: max(0, 18.3 − temp_fcst_zone). | as temp_fcst_zone |
 | `cdh_zone` | Cooling degree-hours: max(0, temp_fcst_zone − 18.3). | as temp_fcst_zone |
+| `temp_fcst_zone_isolf` | GFS 2 m temperature forecast for the delivery hour as available when the ISOLF file used (D-2) was published, 08:30 ET on D-2: roughly the weather NYISO's forecast was built on (°C). External zones use all stations. | weather_fcst.available_utc <= 08:30 ET D-2 |
+| `hrrr_temp_zone` | HRRR 06z (D-1) forecast for the delivery hour, zone mean 2 m temperature (°C). NULL for external zones. | weather_hrrr.available_utc (06z D-1 + 2 h) |
+| `hrrr_dewpoint_zone` | HRRR 06z (D-1) forecast for the delivery hour, zone mean 2 m dew point (°C). NULL for external zones. | weather_hrrr.available_utc (06z D-1 + 2 h) |
+| `hrrr_wind80_zone` | HRRR 06z (D-1) forecast for the delivery hour, zone mean 80 m wind speed (m/s). NULL for external zones. | weather_hrrr.available_utc (06z D-1 + 2 h) |
+| `hrrr_cloud_zone` | HRRR 06z (D-1) forecast for the delivery hour, zone mean total cloud cover (%). NULL for external zones. | weather_hrrr.available_utc (06z D-1 + 2 h) |
+| `hrrr_cape_zone` | HRRR 06z (D-1) forecast for the delivery hour, zone 90th-percentile surface CAPE (J/kg). NULL for external zones. | weather_hrrr.available_utc (06z D-1 + 2 h) |
+| `hrrr_refl40_zone` | HRRR 06z (D-1) forecast for the delivery hour, zone share of cells with composite reflectivity >= 40 dBZ. NULL for external zones. | weather_hrrr.available_utc (06z D-1 + 2 h) |
+| `hrrr_lightning_zone` | HRRR 06z (D-1) forecast for the delivery hour, zone mean lightning flash density. NULL for external zones. | weather_hrrr.available_utc (06z D-1 + 2 h) |
+| `hrrr_temp_zone_dmean` | Mean of hrrr_temp_zone over delivery day D (°C): daily level for thermal inertia. | as hrrr_temp_zone |
+| `hrrr_temp_zone_dmax` | Max of hrrr_temp_zone over delivery day D (°C): daily level for thermal inertia. | as hrrr_temp_zone |
+| `hrrr_temp_zone_dmin` | Min of hrrr_temp_zone over delivery day D (°C): daily level for thermal inertia. | as hrrr_temp_zone |
+| `hrrr_temp_nyiso` | Mean over the 11 internal zones of hrrr_temp_zone (°C). | as hrrr_temp_zone |
+| `hrrr_cape_nyiso_max` | Max over internal zones of hrrr_cape_zone for the hour (J/kg). | as hrrr_temp_zone |
+| `hrrr_refl40_nyiso_max` | Max over internal zones of hrrr_refl40_zone for the hour. | as hrrr_temp_zone |
+| `hrrr_lightning_nyiso_max` | Max over internal zones of hrrr_lightning_zone for the hour. | as hrrr_temp_zone |
 | `gas_hh` | Latest Henry Hub spot price available at issue time ($/MMBtu). | gas_henry_hub.available_utc |
 | `implied_hr_d1` | da_d1_mean / gas_hh: implied market heat rate of D-1 (MMBtu/MWh). | max of inputs |
 

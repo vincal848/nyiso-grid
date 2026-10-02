@@ -31,6 +31,8 @@ EXTERNAL = {d.key: d for d in [
     ExternalDataset("weather_obs", "Hourly weather observations at NY stations (NOAA GHCNh)", "ts_utc"),
     ExternalDataset("weather_fcst", "Hourly GFS temperature forecasts by lead time, 0-7 days (Open-Meteo "
                     "previous-runs API; research use only)", "ts_utc"),
+    ExternalDataset("weather_hrrr", "NOAA HRRR 06z day-ahead forecasts aggregated to NYISO zones (public domain)",
+                    "ts_utc"),
 ]}
 
 
