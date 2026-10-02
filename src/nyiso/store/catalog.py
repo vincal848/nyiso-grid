@@ -109,8 +109,8 @@ def validate() -> tuple[pd.DataFrame, dict[str, int]]:
         bucket = f"time_bucket(INTERVAL {minutes} MINUTE, ts_utc + INTERVAL {minutes * 30} SECOND)"
         where = ("WHERE issue_date = CAST(timezone('America/New_York', ts_utc) AS DATE) - INTERVAL 1 DAY"
                  if key == "load_forecast" else "")
-        entity = " || '|' || ".join(f"CAST({c} AS VARCHAR)" for c in ds.entity)
-        keys = ", ".join(["ts_utc", *ds.entity] + (["issue_date"] if ds.wide else []))
+        entity = " || '|' || ".join(f"CAST({c} AS VARCHAR)" for c in ds.curated_entity)
+        keys = ", ".join(["ts_utc", *ds.curated_entity] + (["issue_date"] if ds.wide else []))
         dups[key] = 0
         for f in sorted((CURATED / key).rglob("*.parquet")):
             src = f"read_parquet('{f.as_posix()}')"
@@ -146,7 +146,7 @@ def validate() -> tuple[pd.DataFrame, dict[str, int]]:
     # expected intervals per local day (23/24/25 hours around DST)
     start = cov["day"].dt.tz_localize("America/New_York")
     end = (cov["day"] + pd.Timedelta(days=1)).dt.tz_localize("America/New_York")
-    cov["expected"] = ((end - start) / pd.to_timedelta(cov["interval_min"], unit="min")).astype(int)
+    cov["expected"] = ((end - start) / pd.to_timedelta(cov["interval_min"], unit="min")).astype(int).clip(lower=1)
     cov["coverage"] = (cov["intervals"] / cov["expected"]).clip(upper=1.0)
     cov.loc[cov["dataset"].str.endswith("constraints"), "coverage"] = 1.0  # event data: presence only
     cov = cov.sort_values(["dataset", "day"]).reset_index(drop=True)

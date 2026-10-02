@@ -48,6 +48,11 @@ class Dataset:
     snapshot_keys: tuple[str, ...] = ()   # if set: file is a repeated snapshot; compact to validity intervals
     snapshot_gap_min: int = 15
 
+    @property
+    def curated_entity(self) -> tuple[str, ...]:
+        """`entity` as named in the curated table (datetime columns gain the `_utc` suffix)."""
+        return tuple(f"{c}_utc" if c in self.datetime_cols else c for c in self.entity)
+
 
 def _lbmp(key, mis_dir, stem, interval, conv, desc, level):
     cols = dict(LBMP_COLS)
@@ -100,13 +105,19 @@ DATASETS: dict[str, Dataset] = {d.key: d for d in [
             datetime_cols=("outage_start",),
             snapshot_keys=("ptid", "equipment", "outage_start_utc"),
             description="Transmission equipment out of service in real time, compacted from snapshots"),
+    Dataset("da_sched_outages", "outSched", "outSched", 1440, "start",
+            {"PTID": "ptid", "Equipment Name": "equipment",
+             "Scheduled Out Date/Time": "sched_out", "Scheduled In Date/Time": "sched_in"},
+            ("ptid", "equipment", "sched_out", "sched_in"), ts_col="Timestamp",
+            datetime_cols=("sched_out", "sched_in"),
+            description="Day-ahead scheduled transmission outages: the outage set used in each day's DAM (P-54C)"),
 ]}
 
 # Backfill order: small/fast datasets first, the ~300M-row nodal RT set last.
 BACKFILL_ORDER = [
     "da_lbmp_zone", "rt_lbmp_zone_hourly", "load", "fuel_mix", "btm_solar", "load_forecast",
     "da_constraints", "rt_constraints", "interface_flows", "rt_lbmp_zone",
-    "da_asp", "rt_asp", "sched_outages", "rt_line_outages",
+    "da_asp", "rt_asp", "sched_outages", "rt_line_outages", "da_sched_outages",
     "da_lbmp_node", "rt_lbmp_node_hourly", "rt_lbmp_node",
 ]
 assert set(BACKFILL_ORDER) == set(DATASETS)

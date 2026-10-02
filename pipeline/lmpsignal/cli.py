@@ -52,6 +52,8 @@ MODELS = {
     "struct_cong": lambda: __import__("lmpsignal.structural.congestion", fromlist=["StructuralCongestion"]).StructuralCongestion(),
     "struct_cong_l2": lambda: __import__("lmpsignal.structural.congestion", fromlist=["StructuralCongestion"]).StructuralCongestion(
         blend_loss="l2", name="struct_cong_l2"),
+    "struct_cong_out": lambda: __import__("lmpsignal.structural.congestion", fromlist=["StructuralCongestion"]).StructuralCongestion(
+        outage_map=True, name="struct_cong_out"),
     "zero_congestion": lambda: __import__("lmpsignal.models.naive", fromlist=["ZeroCongestion"]).ZeroCongestion(),
     "gbm_l1": lambda: __import__("lmpsignal.models.gbm", fromlist=["GBM"]).GBM(objective="l1"),
     "gbm_l2": lambda: __import__("lmpsignal.models.gbm", fromlist=["GBM"]).GBM(objective="l2"),
