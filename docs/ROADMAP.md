@@ -21,6 +21,15 @@ phase; this phase builds the probabilistic LMP signal._
 - **M3 (first version)**: `struct_cong` / `struct_cong_l2`, a hurdle model per binding constraint without
   outage information. `struct_cong` wins MAE on congestion but loses on RMSE/CRPS to LEAR v2; `struct_cong_l2`
   is worse than persistence. RT congestion is still roughly tied with `zero_congestion` on CRPS.
+- **M3 outage step (2026-10-02): no congestion gain.** Ingested the DAM outage lists (P-54C; the RT
+  `sched_outages` feed only looks ~2.6 h ahead, useless at the D−1 issue) and mapped outages to constraints
+  (station-name match + cross-fitted binding lift). `struct_cong_out` improves binding log loss ~1% on six
+  diagnostic folds, but over 36 folds congestion is slightly *worse* than `struct_cong`: DA CRPS 3.135 vs
+  3.069 (RMSE 11.56 vs 10.89), RT CRPS 4.971 vs 4.919. On outage-onset constraint-hours it is worse than v1
+  (log loss +1.5% DA, +5.6% RT); the small gains come after outages end. Recent binding history carries
+  ~60% of P(bind) gain and already reflects long outages; the D−1 list cannot see outages starting on D.
+  Kept as an ensemble candidate, not adopted. A forward schedule (P-14B) must be archived from now on to
+  test planned-outage onsets.
 - **Holdout data complete** (2026-10-02): warehouse and panel cover 2025-10-01..2026-09-30. Still locked.
 
 ## Metric decision (2026-09-28)
