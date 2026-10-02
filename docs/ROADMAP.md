@@ -30,6 +30,14 @@ phase; this phase builds the probabilistic LMP signal._
   ~60% of P(bind) gain and already reflects long outages; the D−1 list cannot see outages starting on D.
   Kept as an ensemble candidate, not adopted. A forward schedule (P-14B) must be archived from now on to
   test planned-outage onsets.
+- **M3w step 1-2: HRRR weather and the weather-to-load correction (2026-10-02).** `weather_hrrr` (NOAA HRRR 06z
+  D−1, public domain, zone aggregates incl. convection) replaces nothing yet but is the licensed path off
+  Open-Meteo. `loadfix_gbm` predicts the error of the ISOLF D−2 forecast from the weather change since that
+  file. NYISO total over 36 folds: RMSE 538 MW vs 583 for debiased ISOLF D−2 (−8%) and 697 raw; MAPE 2.16% vs
+  2.34%. It recovers ~55% of the gap to the (unusable) debiased D−1 file (502 MW) and beats it in winter (432 vs
+  448). The calendar-only ablation (619 MW) shows the gain is weather, not level-bias learning. ISOLF runs up
+  to 13% below P-58B actuals with a seasonal pattern, so raw-ISOLF comparisons overstate any model.
+  Next (step 3): corrected load and load surprise as price-model features (OOS stacking table), then M3b.
 - **Holdout data complete** (2026-10-02): warehouse and panel cover 2025-10-01..2026-09-30. Still locked.
 
 ## Metric decision (2026-09-28)
