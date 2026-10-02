@@ -82,7 +82,7 @@ def train(
 
 @app.command()
 def loadfix(
-    kind: str = typer.Argument(..., help="lin (classical per-zone ridge) or gbm (LightGBM)"),
+    kind: str = typer.Argument(..., help="lin (classical per-zone ridge), gbm (LightGBM) or gbm_cal (ablation: no weather)"),
     smoke: int = typer.Option(0, help="Run only the first N folds WITHOUT logging (not a trial)"),
 ):
     """Weather-to-load correction of the ISOLF D-2 forecast, scored on the validation folds."""

@@ -119,31 +119,37 @@ class LinearCorrection:
         return None
 
 
-class GBMCorrection:
-    name = "loadfix_gbm"
+CAL_FEATURES = ["zone", "load_fcst_zone", *CALENDAR]
 
-    def __init__(self, n_estimators: int = 600, learning_rate: float = 0.03, num_leaves: int = 63):
+
+class GBMCorrection:
+    """weather=False is the ablation: same model on ISOLF + calendar only (learns the seasonal level bias), so the
+    gain of loadfix_gbm over loadfix_gbm_cal is what the weather adds."""
+
+    def __init__(self, n_estimators: int = 600, learning_rate: float = 0.03, num_leaves: int = 63, weather: bool = True):
+        self.name = "loadfix_gbm" if weather else "loadfix_gbm_cal"
+        self.features = GBM_FEATURES if weather else CAL_FEATURES
         self.params = dict(n_estimators=n_estimators, learning_rate=learning_rate, num_leaves=num_leaves,
                            min_child_samples=200, subsample=0.8, subsample_freq=1, colsample_bytree=0.8,
                            reg_lambda=1.0, verbose=-1, n_jobs=16)
 
     def config(self) -> dict:
         return {"model": "LightGBM (L2) on relative ISOLF D-2 error, pooled over zones", "params": self.params,
-                "features": GBM_FEATURES}
+                "features": self.features}
 
     def fit(self, d: pd.DataFrame) -> "GBMCorrection":
-        self.m = lgb.LGBMRegressor(**self.params).fit(d[GBM_FEATURES], d["r"], categorical_feature=["zone"])
+        self.m = lgb.LGBMRegressor(**self.params).fit(d[self.features], d["r"], categorical_feature=["zone"])
         return self
 
     def predict(self, d: pd.DataFrame) -> np.ndarray:
-        return self.m.predict(d[GBM_FEATURES])
+        return self.m.predict(d[self.features])
 
     def importance(self) -> pd.DataFrame:
         g = self.m.booster_.feature_importance("gain")
-        return pd.DataFrame({"feature": GBM_FEATURES, "gain": g / g.sum()})
+        return pd.DataFrame({"feature": self.features, "gain": g / g.sum()})
 
 
-MODELS = {"lin": LinearCorrection, "gbm": GBMCorrection}
+MODELS = {"lin": LinearCorrection, "gbm": GBMCorrection, "gbm_cal": lambda: GBMCorrection(weather=False)}
 
 
 # ----------------------------------------------------------------------------- scoring and runner
