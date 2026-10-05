@@ -119,6 +119,16 @@ Report results with and without 2025-06-24 (single-event concentration).
   on `combo3_eq_aci` with Holm-adjusted DM p < 0.05 (both with and without 2025-06-24). The holdout is spent (M7),
   so v2 evidence is validation plus the live track record; no second holdout evaluation.
 
+### M3b result (2026-10-05): spike member works, not adopted into the signal
+Budget used: run 1 `spike_full-20261005T062326-ef62f5`; run 2 `spike_no_storm` killed after 10 folds (out of memory
+while post-processing ran concurrently; marked failed); run 3 its re-run `spike_no_storm-20261005T065811-2bd4e0`.
+- Classifier: beats in-fold climatology on Brier in 35/36 folds and "spiked at D−2" in 34/36; pooled Brier 0.0403,
+  log loss 0.1416 (base rate 7.4%). HRRR storm features add little (log loss 0.1423 without them).
+- Mixed into signal v1's RT total (`v1_spike_mix`): RT CRPS on spike hours −12.4% (Holm p < 0.0001), pooled −2.0%
+  (Holm p = 0.12); without 2025-06-24: −12.8% / −1.9% (p = 0.15). `v1_spike_mix_aci` is worse pooled (+1.3%).
+- Adoption rule needs both gains significant, so **signal v1 is unchanged**. The spike probabilities stay available
+  as a separate risk output (and as an input for DART v2, see `docs/RESEARCH_LOG.md`).
+
 ## M4: probabilistic combination (evidence: strong for DA, European)
 QRA / LQRA over the member pool + isotonic distributional regression + conformal ensemble; EVT (GPD)
 tail splice above the ~0.9 conditional quantile; joint DA/RT samples so the DA−RT spread keeps its

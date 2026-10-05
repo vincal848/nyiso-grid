@@ -38,7 +38,7 @@ Status: `open` (not started), `tried` (result recorded), `blocked` (needs data o
 
 | Idea | Why | Evidence so far | Cost / blocker | Status |
 |---|---|---|---|---|
-| RT spike track (M3b): sparse logistic P(spike) + ORDC-aware magnitude + EVT tail | Models lose to persistence in top-5% RT hours | Roadmap M3b; Hubert, Lolas & Sircar 2026 | Training milestone with budget | open |
+| RT spike track (M3b): sparse logistic P(spike) + GPD magnitude, mixed into v1 | Models lose to persistence in top-5% RT hours | Spike-hour RT CRPS −12% (significant), pooled −2% (p = 0.12): not adopted (ROADMAP M3b result). Open follow-ups: ORDC-aware magnitude, threshold that adapts to price level (2025 winter base rates 41–71%), use p_spike in DART v2 | Next attempt needs a new declared milestone | tried |
 | QRA / LQRA, isotonic distributional regression, conformal ensemble (M4) | 98% intervals miss ~3% with clustered misses | Scoreboard (Christoffersen p ≈ 0) | Mostly post-processing | open |
 | EVT (GPD) tail splice above the 0.9 quantile | Heavy tails | Literature | Post-processing | open |
 | DART v2: size on conditional-mean forecasts + RT spike risk | DART prototype loses (holdout −$195k): v1's median-like RT forecast understates the RT mean by ~$4.5 (validation), biasing the spread to INC | docs/experiments/dart_prototype.md | Mean-targeting members or distribution mean; spike model (M3b); joint DA/RT (M4) | open |
