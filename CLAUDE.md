@@ -11,7 +11,8 @@
   Must not import `nyiso.api`. The dashboard API may *read* those files (never import pipeline code).
   The frozen signal (`docs/SIGNAL_V1.md`, `pipeline/lmpsignal/presets.py`) runs live via `lmp forecast`; its outputs go
   to experiments.duckdb (`live_forecasts`, `live_node_forecasts`) and data/experiments/live/. The M3b spike member
-  (`live_spike`) and DART v2 paper positions (`live_dart`) run beside it; neither is part of the signal. Ingestion for the daily
+  (`live_spike`) and DART v2 paper positions (`live_dart`) run beside it; neither is part of the signal.
+  M5 monthly forecasts (`lmp monthly`, `presets.M5_CHOICE`) go to `live_monthly`. Ingestion for the daily
   job is orchestrated outside the pipeline by scripts/daily.py.
 - Keep everything a model computes: predictions with quantiles per fold, and model internals as
   artifacts (`registry.save_artifact`; see `docs/STRUCTURE.md`). Metrics are derived, never the only record.
@@ -74,5 +75,6 @@
 - `uv run lmp dart [--rule v1|v2]` — DART backtest on stored forecasts -> docs/experiments/dart_prototype.md (v1) / dart_v2.md (v2)
 - `uv run lmp risk [--date D]` / `uv run lmp positions [--date D]` / `uv run lmp paper` — live spike risk, DART v2 paper
   positions, paper-trading track record
-- `uv run python scripts/daily.py` — daily job: data refresh, build, panel, forecast, nodes, risk, positions (04:30 ET)
+- `uv run lmp m5 <models> [--window validation|holdout]` / `uv run lmp monthly` — M5 monthly DA products (runs / live)
+- `uv run python scripts/daily.py` — daily job: data refresh, build, panel, forecast, nodes, risk, positions, monthly (04:30 ET)
 - `uv run pytest`

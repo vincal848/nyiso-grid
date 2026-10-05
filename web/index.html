@@ -142,6 +142,15 @@
         </div>
         <div class="card"><div class="card-head"><h2>DART v2 paper P&amp;L (settled days, $)</h2></div><div id="c-paper" class="chart"></div></div>
       </div>
+      <div class="card">
+        <div class="card-head"><h2 id="monthly-title">Monthly DA forecast (M5, next six months)</h2></div>
+        <div class="table-wrap"><table id="t-monthly"><thead><tr>
+          <th>Month</th><th class="num">On-peak total</th><th class="num">90% interval</th><th class="num">Off-peak total</th>
+          <th class="num">On-peak congestion</th><th class="num">Off-peak congestion</th>
+        </tr></thead><tbody></tbody></table></div>
+        <div class="muted small" id="monthly-src">Seasonal norm (mean of the same month over all years since 2015) with
+          intervals from its past errors; it lags price-level shifts (ROADMAP, M5 result).</div>
+      </div>
       <div class="toolbar">
         <div class="seg" id="sig-mkt"><button data-v="da" class="active">DA</button><button data-v="rt">RT</button></div>
         <label>Fold <select id="sig-fold"></select></label>

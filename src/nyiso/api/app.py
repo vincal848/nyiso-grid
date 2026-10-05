@@ -429,6 +429,16 @@ def live_paper():
     return js(rows)
 
 
+@app.get("/api/live/monthly")
+def live_monthly(zone: str = "N.Y.C."):
+    """Latest M5 vintage for one zone: monthly DA total and congestion, on/off-peak, with 90% intervals and actuals."""
+    rows = _lq("""WITH v AS (SELECT max(cutoff) AS c FROM live_monthly)
+                  SELECT f.cutoff, f.month, f.h, f.period, f.component, f.model, f.mean, f.q05, f.q50, f.q95
+                  FROM live_monthly f, v WHERE f.cutoff = v.c AND f.zone = ?
+                  ORDER BY f.month, f.component, f.period""", [zone], table="live_monthly")
+    return js({"zone": zone, "rows": rows})
+
+
 # ------------------------------------------------------------------ static
 
 @app.get("/")

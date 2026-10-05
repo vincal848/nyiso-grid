@@ -47,7 +47,11 @@ Status: `open` (not started), `tried` (result recorded), `blocked` (needs data o
 | LEAR blow-up guard in shock months | M7: LEAR's DA MAE 140 $/MWh in 2026-01 made signal v1's DA RMSE worse than persistence on the holdout | M7 result (docs/SIGNAL_V1.md) | Post-processing (shrink toward persistence when inputs leave the training range) or robust LEAR loss | open |
 | LEAR v2 with corrected load / HRRR inputs | `lear_wx` tested on LEAR v1 only | — | One full run | open |
 | DNN / NBEATSx ensemble, distributional DNN, TabPFN-TS / Chronos-2 member (M6) | Literature gains 3–8% rMAE over LEAR (European DA) | Literature | Large | open |
-| Horizon extension (M5): bid-stack anchor, seasonal norms | Needed for TCC / monthly products | Roadmap | Large | open |
+| Monthly norm with recent-year weights or a level adjustment (M5 follow-up) | `m5_norm` weights 2015–2020 equally; missed winter 2025–26 by ~60% | M5 check: `m5_lastyear` 11.3 vs norm 22.2 total CRPS on 2025-10..2026-09 | Post-processing over stored M5 forecasts or one declared run | open |
+| Gas forward curve for the heat-rate anchor (M5) | Spot gas at the cutoff is a poor forecast of gas months ahead | `m5_anchor` loses to the norm (13.6 vs 10.2) mostly after the 2022 gas spike | Free NYMEX series ended 2024-04; CME settlements / paid data | blocked (data) |
+| EIA-923 / CEMS bid stack, masked offers (M5) | Structural anchor for supply shifts | Not attempted in M5 | Ingest EIA-923, CEMS and NYISO masked bids (3-month lag) | open |
+| RT monthly averages, hourly shapes, nodes and TCC path values (M5 scope) | TCC valuation needs node-pair congestion over a month or a capability period | M5 covers zonal DA total and congestion only | Moderate | open |
+| Horizon extension (M5): bid-stack anchor, seasonal norms | Needed for TCC / monthly products | Roadmap | Large | tried (M5: seasonal norm adopted) |
 
 ## Infrastructure
 

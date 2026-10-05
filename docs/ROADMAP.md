@@ -41,6 +41,9 @@ phase; this phase builds the probabilistic LMP signal._
 - **M7 (2026-10-05): signal v1 frozen and evaluated once.** `combo3_eq_aci` (selection rule, pooled CRPS 7.593).
   Holdout total CRPS DA 9.75 vs 11.54 for yesterday's DA (−16%), RT 14.55 vs 19.56 (−26%); intervals calibrated;
   DA RMSE worse than persistence because of January 2026. Details: `docs/SIGNAL_V1.md`.
+- **M3b / M4 (2026-10-05)**: spike member and robust combination not adopted; DART v2 positive on validation, now
+  paper-traded live. **M5 (2026-10-05)**: monthly DA products, horizons 1-6; the seasonal norm beat the gas x heat-rate
+  anchor and the decay model and is the live monthly forecast (`lmp monthly`).
 - **Holdout data complete** (2026-10-02): warehouse and panel cover 2025-10-01..2026-09-30. Still locked.
 
 ## Metric decision (2026-09-28)
@@ -207,6 +210,32 @@ offers), seasonal norms and decay curves per component, monthly congestion from 
   forecast is the baseline with the lowest pooled CRPS.
 - **Then one run on target months 2025-10..2026-09** for the adopted models and the baselines, reported as a check on
   an already-seen period (the M7 holdout year: not used for fitting, but its daily prices have been looked at).
+
+### M5 result (2026-10-05): the seasonal norm wins; no candidate adopted
+Budget used: 2 of 3 (`m5_anchor-20261005T080925-a2f04c`, `m5_decay-20261005T080942-c339fc`); the reserved run was not
+needed. Baselines: `m5_persist-…d90f81`, `m5_lastyear-…0838ca`, `m5_norm-…dacb08`. Validation, 36 target months ×
+6 horizons × 11 zones × on/off-peak (4,752 rows per target):
+
+| model | total CRPS | total RMSE | congestion CRPS | congestion RMSE |
+|---|---|---|---|---|
+| m5_norm | **10.18** | **20.2** | **3.84** | 8.64 |
+| m5_decay | 13.10 | 27.0 | 3.86 | **8.52** |
+| m5_anchor | 13.63 | 27.4 | 4.14 | 9.24 |
+| m5_persist | 16.83 | 36.9 | 4.67 | 10.81 |
+| m5_lastyear | 19.42 | 43.5 | 6.39 | 14.03 |
+
+- Total: `m5_decay` loses to `m5_norm` at every horizon (h1 10.21 vs 10.02, h6 15.2 vs 10.3). The anchor treats spot
+  gas at the cutoff as the forecast of future gas: right while gas was stable (2022Q4, 2023Q3–Q4), badly wrong
+  after the 2022 spike (2023Q1 CRPS 26 vs 6). Without a gas forward curve (EIA's futures series ended 2024-04) the
+  anchor cannot beat the norm. Congestion: decay ties the norm (3.86 vs 3.84; DM vs persistence Holm p = 0.20).
+- **M5 forecast = `m5_norm` for both targets** (`presets.M5_CHOICE`). φ_h (total) came out ≈ 0, ψ_h 0.01–0.13.
+- Check on the already-seen target months 2025-10..2026-09 (baselines only, since the norm was adopted): total CRPS
+  `m5_lastyear` 11.3, `m5_norm` 22.2, `m5_persist` 35.9; congestion `m5_persist` 2.3, `m5_lastyear` 3.2, `m5_norm`
+  3.9. Winter 2025–26 broke the norm: NYISO on-peak DA averaged $208 in January 2026 vs a $77 norm, because the norm
+  weights 2015–2020 low-price years equally. A norm with recent-year weights or a level adjustment, and a gas forward
+  curve, are the next ideas (research log); the declared choice is not re-tuned on this period.
+- Live: `lmp monthly` (daily job; the vintage changes on the cutoff, about the 24th) -> `live_monthly`, dashboard
+  Signal tab.
 
 ## M6: deep and graph models (ensemble members, not replacements)
 Feed-forward DNN / NBEATSx ensemble (4+ runs), distributional DNN (Johnson SU); TabPFN-TS or

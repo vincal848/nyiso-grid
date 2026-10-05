@@ -165,7 +165,7 @@ async function liveInit() {
   $("#live-zone").innerHTML = INTERNAL.map((z) => `<option ${z === "N.Y.C." ? "selected" : ""}>${z}</option>`).join("");
   const dates = await api("/api/live/dates").catch(() => []);
   $("#live-date").innerHTML = dates.map((r) => `<option>${r.delivery_date}</option>`).join("");
-  ["live-date", "live-zone", "live-comp"].forEach((id) => ($("#" + id).onchange = () => { drawLive(); drawLiveNodes(); drawDart(); }));
+  ["live-date", "live-zone", "live-comp"].forEach((id) => ($("#" + id).onchange = () => { drawLive(); drawLiveNodes(); drawDart(); drawMonthly(); }));
 }
 
 async function drawLive() {
@@ -240,9 +240,23 @@ async function drawDart() {
   }), true);
 }
 
+async function drawMonthly() {
+  const zone = $("#live-zone").value || "N.Y.C.";
+  const d = await api(`/api/live/monthly?zone=${encodeURIComponent(zone)}`).catch(() => ({ rows: [] }));
+  const months = [...new Set(d.rows.map((r) => r.month))];
+  const get = (m, c, p) => d.rows.find((r) => r.month === m && r.component === c && r.period === p) || {};
+  $("#monthly-title").textContent = `Monthly DA forecast (M5), ${zone}` + (d.rows.length ? `, vintage ${d.rows[0].cutoff}` : "");
+  $("#t-monthly tbody").innerHTML = months.map((m) => {
+    const pt = get(m, "total", "peak");
+    return `<tr><td>${String(m).slice(0, 7)}</td><td class="num">${num(pt.mean, 2)}</td>` +
+      `<td class="num">${num(pt.q05, 0)}–${num(pt.q95, 0)}</td><td class="num">${num(get(m, "total", "offpeak").mean, 2)}</td>` +
+      `<td class="num">${num(get(m, "congestion", "peak").mean, 2)}</td><td class="num">${num(get(m, "congestion", "offpeak").mean, 2)}</td></tr>`;
+  }).join("");
+}
+
 window.renderSignal = async function (date) {
   await liveInit();
-  await Promise.all([drawLive().catch(() => {}), drawTrack().catch(() => {}), drawLiveNodes().catch(() => {}), drawDart().catch(() => {})]);
+  await Promise.all([drawLive().catch(() => {}), drawTrack().catch(() => {}), drawLiveNodes().catch(() => {}), drawDart().catch(() => {}), drawMonthly().catch(() => {})]);
   await sigInit();
   if (!$("#t-sig tbody").children.length) await loadStructure().catch(() => {});
   await drawFan(date).catch(() => {});

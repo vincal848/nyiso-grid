@@ -54,3 +54,6 @@ FROZEN_BASES = {
 }
 
 SIGNAL_V1 = "combo3_eq_aci"
+
+# M5 (monthly DA products): the declared adoption rule kept the seasonal norm for both targets (ROADMAP, "M5 result").
+M5_CHOICE = {"total": "m5_norm", "congestion": "m5_norm"}
