@@ -371,6 +371,15 @@ def graphs(model: str = typer.Option("struct_cong_l2", help="Structural model wh
     typer.echo(f"wrote {g.STRUCTURE_DB} from {rid}")
 
 
+@app.command("panel-diff")
+def panel_diff(run_a: str, run_b: str):
+    """Which panel columns differ between the panels two runs received (runs from 2026-10-05 on)."""
+    from lmpsignal import registry
+
+    d = registry.panel_diff(run_a, run_b)
+    typer.echo("identical panels" if d.empty else d.to_string(index=False))
+
+
 @app.command()
 def report(models: str = typer.Option(None, help="Comma-separated model names (default: all with done runs)")):
     """Pooled validation scoreboard + Diebold-Mariano tests; writes docs/experiments/scoreboard.md."""

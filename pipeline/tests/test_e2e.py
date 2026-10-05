@@ -107,3 +107,23 @@ def test_dart_v2_rho_uses_only_the_prior_year():
     assert np.isclose(dart._rho(resid, pd.Timestamp("2025-01-01"))["WEST"], 1.0)
     assert np.isclose(dart._rho(resid, pd.Timestamp("2026-01-01"))["WEST"], -1.0)
     assert dart._rho(resid, pd.Timestamp("2023-06-01")).empty
+
+
+def test_lear_parallel_retries_then_runs_in_process(monkeypatch):
+    from concurrent.futures.process import BrokenProcessPool
+
+    from lmpsignal.models import lear
+
+    calls = {"n": 0}
+
+    class Broken:
+        def __init__(self, *a, **k):
+            pass
+
+        def __call__(self, gen):
+            calls["n"] += 1
+            raise BrokenProcessPool("worker died at start-up")
+
+    monkeypatch.setattr(lear, "Parallel", Broken)
+    assert lear._parallel(lambda a, b: a + b, [(1, 2), (3, 4)], n_jobs=2) == [3, 7]
+    assert calls["n"] == 3                                          # two retries, then in-process

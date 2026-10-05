@@ -30,7 +30,7 @@ def run(model: Model, p: pd.DataFrame, folds: list[cv.Fold] | None = None, refer
     folds = folds or cv.folds()
     config = {**model.config(), "folds": len(folds), "embargo_days": EMBARGO_DAYS, "quantiles": quantiles,
               "first_fold": folds[0].name, "last_fold": folds[-1].name}
-    run_id = registry.start_run(model.name, config, len(p)) if log else None
+    run_id = registry.start_run(model.name, config, len(p), panel=p) if log else None
     if hasattr(model, "prepare"):
         model.prepare(p)
     history: list[pd.DataFrame] = []

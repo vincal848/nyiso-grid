@@ -200,7 +200,7 @@ def run(kind: str, p: pd.DataFrame, folds: list[cv.Fold] | None = None, log: boo
     ok = d["r"].notna() & d["load_fcst_zone"].notna() & d["hrrr_temp_zone"].notna()
     run_id = registry.start_run(model.name + suffix, {**model.config(), "folds": len(folds), "embargo_days": EMBARGO_DAYS,
                                                       "first_fold": folds[0].name, "last_fold": folds[-1].name},
-                                int(ok.sum())) if log else None
+                                int(ok.sum()), panel=p) if log else None
     try:
         for f in folds:
             t0 = time.time()

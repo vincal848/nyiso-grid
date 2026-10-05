@@ -173,7 +173,7 @@ def run(variant: str, p: pd.DataFrame, folds: list[cv.Fold] | None = None, log: 
     folds = folds or cv.folds()
     base = frame(p)
     run_id = registry.start_run(member.name, {**member.config(), "folds": len(folds), "embargo_days": EMBARGO_DAYS,
-                                              "first_fold": folds[0].name, "last_fold": folds[-1].name}, len(base)) if log else None
+                                              "first_fold": folds[0].name, "last_fold": folds[-1].name}, len(base), panel=p) if log else None
     try:
         for f in folds:
             t0 = time.time()

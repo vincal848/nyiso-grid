@@ -6,6 +6,8 @@ data/experiments.duckdb
 data/experiments/<run_id>/fold=<YYYY-MM>.parquet   predictions, long format
 data/experiments/<run_id>/artifacts/<name>/fold=<YYYY-MM>.parquet   model internals per fold (e.g. shift
     factors, constraint catalog, per-constraint forecasts), so nothing a model computes is thrown away
+data/experiments/panel_snapshots/<panel_hash>.parquet (+ .columns.json)   the exact panel a run received (runs from
+    2026-10-05 on), stored once per distinct content; runs.panel_hash points to it, `lmp panel-diff` compares runs
 """
 from __future__ import annotations
 
@@ -35,7 +37,9 @@ ALTER TABLE runs ADD COLUMN IF NOT EXISTS environment VARCHAR;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS finished_utc TIMESTAMPTZ;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS duration_s DOUBLE;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS error VARCHAR;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS panel_hash VARCHAR;
 """
+SNAPSHOT_DIR = EXPERIMENTS_DIR / "panel_snapshots"
 
 
 def code_fingerprint() -> str:
@@ -115,16 +119,62 @@ def config_hash(config: dict) -> str:
     return hashlib.sha256(json.dumps(config, sort_keys=True, default=str).encode()).hexdigest()[:12]
 
 
-def start_run(model: str, config: dict, panel_rows: int) -> str:
+def panel_hashes(p: pd.DataFrame) -> tuple[str, dict[str, str]]:
+    """Content hash per column (values in row order) and an overall hash over the sorted (column, hash) pairs."""
+    cols = {c: hashlib.sha256(pd.util.hash_pandas_object(p[c], index=False).to_numpy().tobytes()).hexdigest()[:16]
+            for c in p.columns}
+    return hashlib.sha256(json.dumps(sorted(cols.items())).encode()).hexdigest()[:16], cols
+
+
+def snapshot_panel(p: pd.DataFrame) -> str:
+    """Store the panel a run receives (once per distinct content) and return its hash."""
+    h, cols = panel_hashes(p)
+    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    path = SNAPSHOT_DIR / f"{h}.parquet"
+    if not path.exists():
+        tmp = path.with_suffix(".tmp")
+        p.to_parquet(tmp, compression="zstd", index=False)
+        tmp.replace(path)
+        (SNAPSHOT_DIR / f"{h}.columns.json").write_text(json.dumps({"rows": len(p), "columns": cols}, indent=1))
+    return h
+
+
+def load_snapshot(run_id: str) -> pd.DataFrame:
+    """The exact panel a run received (for reproducing it)."""
+    with connect(read_only=True) as con:
+        r = con.execute("SELECT panel_hash FROM runs WHERE run_id = ?", [run_id]).fetchone()
+    if not r or not r[0]:
+        raise ValueError(f"{run_id} has no panel snapshot (runs before 2026-10-05, or not panel-based)")
+    return pd.read_parquet(SNAPSHOT_DIR / f"{r[0]}.parquet")
+
+
+def panel_diff(run_a: str, run_b: str) -> pd.DataFrame:
+    """Columns whose content differs between the panels two runs received (added / removed / changed)."""
+    with connect(read_only=True) as con:
+        hs = dict(con.execute("SELECT run_id, panel_hash FROM runs WHERE run_id IN (?, ?)", [run_a, run_b]).fetchall())
+    meta = []
+    for r in (run_a, run_b):
+        if not hs.get(r):
+            raise ValueError(f"{r} has no panel snapshot")
+        meta.append(json.loads((SNAPSHOT_DIR / f"{hs[r]}.columns.json").read_text()))
+    a, b = meta[0]["columns"], meta[1]["columns"]
+    rows = [{"column": c, "change": "added" if c not in a else "removed" if c not in b else "changed"}
+            for c in sorted(set(a) | set(b)) if a.get(c) != b.get(c)]
+    return pd.DataFrame(rows, columns=["column", "change"]).assign(rows_a=meta[0]["rows"], rows_b=meta[1]["rows"])
+
+
+def start_run(model: str, config: dict, panel_rows: int, panel: pd.DataFrame | None = None) -> str:
     h = config_hash({"model": model, **config})
     run_id = f"{model}-{datetime.now(UTC):%Y%m%dT%H%M%S}-{h[:6]}"
     dfp, dsum = data_fingerprint()
+    ph = snapshot_panel(panel) if panel is not None else None
     with connect() as con:
         con.execute("""INSERT INTO runs (run_id, model, config_json, config_hash, panel_rows, created_utc, status,
-                                         code_fingerprint, git_commit, data_fingerprint, data_summary, environment)
-                       VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)""",
+                                         code_fingerprint, git_commit, data_fingerprint, data_summary, environment,
+                                         panel_hash)
+                       VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?)""",
                     [run_id, model, json.dumps(config, sort_keys=True, default=str), h, panel_rows,
-                     datetime.now(UTC), code_fingerprint(), git_commit(), dfp, dsum, environment()])
+                     datetime.now(UTC), code_fingerprint(), git_commit(), dfp, dsum, environment(), ph])
     (EXPERIMENTS_DIR / run_id).mkdir(parents=True, exist_ok=True)
     return run_id
 

@@ -137,3 +137,20 @@ def test_coverage_tests_behave():
     assert kupiec_pof(rng.random(20000) < 0.13, 0.10)["p_value"] < 1e-6
     assert christoffersen_ind(np.repeat(rng.random(3000) < 0.1, 5)) < 1e-6      # clustered misses
     assert christoffersen_ind(rng.random(20000) < 0.1) > 0.01                 # independent misses
+
+
+def test_panel_snapshot_hashes_columns_and_stores_once(tmp_path, monkeypatch):
+    import json
+
+    from lmpsignal import registry
+
+    monkeypatch.setattr(registry, "SNAPSHOT_DIR", tmp_path)
+    p = pd.DataFrame({"a": [1.0, 2.0, None], "b": ["x", "y", "z"]})
+    h1 = registry.snapshot_panel(p)
+    assert registry.snapshot_panel(p.copy()) == h1 and len(list(tmp_path.glob("*.parquet"))) == 1
+    q = p.assign(a=[1.0, 2.5, None])
+    h2, cols = registry.panel_hashes(q)
+    assert h2 != h1
+    old = json.loads((tmp_path / f"{h1}.columns.json").read_text())["columns"]
+    assert [c for c in cols if cols[c] != old[c]] == ["a"]              # only the changed column differs
+    pd.testing.assert_frame_equal(pd.read_parquet(tmp_path / f"{h1}.parquet"), p)

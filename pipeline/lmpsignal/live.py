@@ -9,7 +9,8 @@ For delivery day D (issued 05:00 ET on D-1), exactly as validated:
      outcomes are filled from the panel once known. Calibration therefore continues without a break.
      For speed the chain sees the last HISTORY_DAYS of history; ACI's miscoverage state adapts within ~100 days
      (gamma 0.01), so this changes intervals negligibly.
-  3. Day D's rows go to experiments.duckdb `live_forecasts` (replacing any earlier forecast for D).
+  3. Day D's rows go to experiments.duckdb `live_forecasts` (replacing any earlier forecast for D); the panel rows
+     the forecast used are kept in data/experiments/live/panel/date=YYYY-MM-DD.parquet.
 The panel must contain D's feature rows: `lmp panel --through D` (scripts/daily.py runs the whole sequence).
 """
 from __future__ import annotations
@@ -115,6 +116,10 @@ def forecast(d: date, signal: str = SIGNAL_V1) -> pd.DataFrame:
         return df
 
     final = resolve(signal)
+    # audit trail: the exact panel rows (features as of issue) behind this day's forecast
+    rows = p[p["delivery_date"] == pd.Timestamp(d)]
+    (LIVE_DIR / "panel").mkdir(parents=True, exist_ok=True)
+    rows.to_parquet(LIVE_DIR / "panel" / f"date={d}.parquet", index=False)
     out = final[final["delivery_date"] == pd.Timestamp(d)][KEYS + ["mean", *QCOLS]].copy()
     out.insert(0, "issue_utc", issue_utc(d))
     out.insert(0, "signal", signal)

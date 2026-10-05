@@ -49,7 +49,8 @@
   can win MAE on congestion). Point forecasts for trading should target the conditional mean.
 - Every model run goes through `runner.run` so it lands in the registry; compare models with `lmp report`.
   Never delete runs: every configuration tried counts toward the Deflated Sharpe Ratio's trial number.
-  Each run logs config hash, code fingerprint, git commit, panel-data fingerprint, environment and duration.
+  Each run logs config hash, code fingerprint, git commit, panel-data fingerprint, environment and duration, and
+  stores the exact panel it received (`runs.panel_hash`; compare runs with `lmp panel-diff A B`).
 - Training is bounded by the protocol in `docs/ROADMAP.md` ("Training protocol"): signal v1's candidate pool is
   closed; later model milestones declare a candidate list and a full-run budget (default 3) before starting.
   Do not start new variants or retrains outside a declared budget; log the idea in `docs/RESEARCH_LOG.md`.
