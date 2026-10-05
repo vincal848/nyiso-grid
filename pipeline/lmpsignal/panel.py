@@ -12,7 +12,7 @@ Availability rules (see docs/DATA.md "As-of availability"):
   weather_fcst / gas ........ their available_utc column
   weather_hrrr .............. available_utc = 06z run on D-1 + 2 h
   load_fix_oos .............. inputs above (ISOLF D-2, HRRR, GFS) + a model trained on data ending 7 days before the
-                              month (lmpsignal/loadfix.py); NULL before 2022-01 and until `lmp loadfix gbm --oos` runs
+                              month (lmpsignal/loadfix.py); NULL before 2022-10 and until `lmp loadfix gbm --oos` runs
 """
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ FEATURES: dict[str, tuple[str, str]] = {
     "hrrr_lightning_nyiso_max": ("Max over internal zones of hrrr_lightning_zone for the hour.", "as hrrr_temp_zone"),
     "load_fix_zone": ("Weather-corrected load forecast for the zone and hour: ISOLF D-2 x (1 + predicted relative "
                       "error) from loadfix_gbm, out of sample (model trained on data ending 7 days before the month). "
-                      "NULL for external zones and before 2022-01 (MW).", "max of ISOLF D-2, HRRR, GFS inputs"),
+                      "NULL for external zones and before 2022-10 (MW).", "max of ISOLF D-2, HRRR, GFS inputs"),
     "load_surprise_zone": ("Predicted relative error of the ISOLF D-2 forecast for the zone and hour "
                            "(load_fix_zone / load_fcst_zone - 1).", "as load_fix_zone"),
     "load_fix_nyiso": ("Sum of load_fix_zone over the 11 internal zones (NULL unless all 11 present) (MW).",

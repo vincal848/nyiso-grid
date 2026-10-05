@@ -19,7 +19,7 @@ any fitted model gains from removing that level bias alone. "_adj" benchmarks mu
 training-window mean ratio per zone x hour; the weather value of a model is its gain over isolf_d2_adj.
 Targets come from the warehouse (`load_zone_5m`, hourly means); the internal zones only.
 
-Price-model feature (`build_oos`): the corrected forecast for every month from 2022-01, each month predicted by a
+Price-model feature (`build_oos`): the corrected forecast for every month from 2022-10, each month predicted by a
 model trained only on data ending EMBARGO_DAYS before that month, written to data/features.duckdb `load_fix_oos`
 (logged as run `<model>_oos`). The panel joins it, so price models see a load forecast that was out of sample at
 the time for every training and test row. Workflow: `lmp panel` -> `lmp loadfix gbm --oos` -> `lmp panel`.
@@ -250,7 +250,10 @@ OOS_SCHEMA = """CREATE TABLE IF NOT EXISTS load_fix_oos (ts_utc TIMESTAMPTZ, zon
                 load_fix DOUBLE, r_hat DOUBLE, run_id VARCHAR)"""
 
 
-def build_oos(kind: str, p: pd.DataFrame, first: str = "2022-01") -> str:
+# First month 2022-10: the model needs a full seasonal cycle of training data. Started at 2022-01 it was worse than
+# debiased ISOLF D-2 through the first summer (2022-07 RMSE 1,251 vs 788 MW), which would only add noise to the
+# price models' early training rows. Chosen on load accuracy in the burn-in year, not on price results.
+def build_oos(kind: str, p: pd.DataFrame, first: str = "2022-10") -> str:
     """Out-of-sample corrected load for every month from `first` (see module docstring); replaces load_fix_oos."""
     run_id = run(kind, p, folds=oos_folds(first), log=True, suffix="_oos")
     pr = registry.predictions(run_id)
