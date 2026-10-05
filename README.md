@@ -17,10 +17,10 @@ pricing. Those pricers are the next phase; this repository builds and validates 
 
 | | |
 |---|---|
-| **Data** | ~455M rows of NYISO MIS data (Oct 2021 → Sep 2026) in Parquet + DuckDB: DA/RT prices for 15 zones and ~750 nodes, load and load forecasts, fuel mix, binding constraints, interface flows, reserve prices, transmission outage schedules; plus NOAA weather, GFS forecast vintages and Henry Hub gas |
+| **Data** | ~455M rows of NYISO MIS data (Oct 2021 → Sep 2026) in Parquet + DuckDB: DA/RT prices for 15 zones and ~750 nodes, load and load forecasts, fuel mix, binding constraints, interface flows, reserve prices, transmission outage schedules; plus NOAA weather (station observations, HRRR), GFS forecast vintages and Henry Hub gas. DA zonal prices go back to 2015 for the monthly forecasts |
 | **Forecast** | Hourly DA and RT prices for day D, issued 05:00 ET on D−1 (the DAM bid deadline), with 21 quantiles per hour and zone |
 | **Validation** | 36 monthly rolling-origin folds (Oct 2022 → Sep 2025), 7-day embargo, 12-month holdout locked in code, every trial logged |
-| **Stack** | Python, DuckDB, Parquet, pandas, scikit-learn, LightGBM, FastAPI, MapLibre, ECharts, GitHub Actions |
+| **Stack** | Python, DuckDB, Parquet, pandas, scikit-learn, LightGBM, PyTorch (optional), FastAPI, MapLibre, ECharts, GitHub Actions |
 
 ## Results (validation, 36 out-of-sample months)
 
@@ -127,7 +127,11 @@ graph and month-over-month structural drift.*
   P&L is linear in price.
 - **Structure before deep learning.** A literature and industry review ([docs/research](docs/research/lmp_forecasting_model_landscape.md))
   found strong evidence for ensembles of domain models with calibrated post-processing. It found weak
-  real-market evidence for graph neural nets and zero-shot foundation models, so those are deferred.
+  real-market evidence for graph neural nets and zero-shot foundation models. A distributional neural network
+  was tried later (M6) and did not beat the statistical ensemble.
+- **Bounded training.** Each model milestone declares its candidates, a budget of full runs and an adoption rule
+  before the first run. That stops open-ended tuning on the validation folds. Ideas that come up mid-milestone go to
+  a research log instead of into another retrain.
 - **Every trial counts.** Deflated Sharpe and PBO are only meaningful if nothing is hidden, so failed,
   aborted and exploratory runs stay in the registry.
 
@@ -159,20 +163,29 @@ The backfill downloads about 7 GB of public data. Everything under `data/` is gi
 
 ## Roadmap
 
-Done: warehouse and dashboard; M0 data audit; M1 validation harness; M2 statistical models; M2.5
-post-processing; M3 structural congestion (outage mapping tried: no congestion gain); HRRR weather and a
-weather-to-load correction (−8% load error vs NYISO's usable forecast); **signal v1 frozen and evaluated once on
-the 2025-10..2026-09 holdout (M7)**: total-price CRPS 16% (DA) and 26% (RT) below yesterday's DA price, intervals
-calibrated, DA point error worse than persistence in the January 2026 shock (`docs/SIGNAL_V1.md`).
+Done: the warehouse and dashboard, then the forecasting milestones (details in `docs/ROADMAP.md`):
+- **Foundations.** M0 data audit; M1 validation harness; M2 statistical models; M2.5 post-processing.
+- **Structure and weather.** M3 structural congestion (adding outage mapping gave no congestion gain). HRRR
+  weather and a weather-to-load correction cut load error 8% vs NYISO's usable forecast.
+- **Signal v1, frozen and evaluated once (M7)** on the 2025-10..2026-09 holdout. Total-price CRPS is 16% (DA) and
+  26% (RT) below yesterday's DA price, and intervals are calibrated. DA point error is worse than persistence in
+  the January 2026 shock (`docs/SIGNAL_V1.md`).
+- **Later milestones, each with a declared budget; none replaced signal v1:**
+  - M3b RT spike model: −12% CRPS in spike hours, but the pooled gain was not significant.
+  - M4 robust combination: not adopted.
+  - M6 distributional neural network ensemble: not adopted. It fails in cold-weather shock months.
+- **M5 monthly DA forecasts** (zones, on/off-peak, 1–6 months ahead): a seasonal norm beat a gas × heat-rate
+  anchor, which has no gas forward curve to work with.
 
-Live: `scripts/daily.py` runs every morning at 04:30 ET (data refresh → panel → `lmp forecast` → `lmp nodes`) and the
-dashboard's Signal tab shows the forecast, its track record and node prices. A DART prototype
-(`docs/experiments/dart_prototype.md`) loses money as declared, and shows why: the point forecast is median-like
-while trading needs the conditional mean.
+Live: `scripts/daily.py` runs every morning at 04:30 ET. It refreshes data, then produces signal v1's zone and node
+forecasts, RT spike risk, **paper DART positions** (rule v2: +$231k on validation, not yet confirmed out of sample)
+and the monthly forecasts. The dashboard's Signal tab shows all of it, with the track records.
 
-Training is bounded by the protocol in `docs/ROADMAP.md`; parked ideas live in `docs/RESEARCH_LOG.md`. Next:
-- RT spike model (M3b) and tail/joint DA–RT calibration (M4), each with a declared run budget.
-- DART v2 on conditional-mean forecasts; TCC pricing from structural node shift factors.
+Parked ideas and what was learned from each attempt are in `docs/RESEARCH_LOG.md`. Next:
+- Let the DART v2 paper record build up.
+- TCC pricing from structural node shift factors.
+- A tuned neural network.
+- Foundation models as live shadow members (their pretraining overlaps the validation years).
 
 ## Data and licensing notes
 
