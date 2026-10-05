@@ -203,7 +203,7 @@ class StructuralCongestion(Model):
         return np.stack([np.nan_to_num(c) for c in cols], axis=-1)
 
     # ------------------------------------------------------------------------------------------ fit
-    def fit(self, train: pd.DataFrame) -> "StructuralCongestion":
+    def fit(self, train: pd.DataFrame) -> StructuralCongestion:
         from sklearn.linear_model import QuantileRegressor
 
         warnings.filterwarnings("ignore")

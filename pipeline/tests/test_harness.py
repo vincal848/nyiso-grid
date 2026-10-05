@@ -4,11 +4,9 @@ from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 import pytest
-
 from lmpsignal import config, cv
 from lmpsignal.evaluate import QCOLS, crps, diebold_mariano, pinball
 from lmpsignal.panel import FEATURES, KEYS, MASKS, TARGETS
-
 
 # ------------------------------------------------------------------ CV and holdout
 

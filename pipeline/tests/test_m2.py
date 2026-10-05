@@ -2,7 +2,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from lmpsignal import config, cv
 from lmpsignal.models import daygrid as dg
 

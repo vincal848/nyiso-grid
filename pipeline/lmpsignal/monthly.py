@@ -16,18 +16,17 @@ daily scoreboard ignores it; forecasts before the scored window are kept as the 
 from __future__ import annotations
 
 import time
-from datetime import date
+from datetime import UTC, date
 
 import duckdb
 import numpy as np
 import pandas as pd
 
-from nyiso.config import DB_PATH
-
 from lmpsignal import registry
 from lmpsignal.calendar import holiday_table
 from lmpsignal.config import EMBARGO_DAYS, INTERNAL_ZONES, QUANTILES
 from lmpsignal.evaluate import QCOLS, crps_rows
+from nyiso.config import DB_PATH
 
 HORIZONS = range(1, 7)
 FIRST_TARGET = pd.Timestamp("2016-01-01")
@@ -154,7 +153,7 @@ def decay_fit(pf: pd.DataFrame, a: pd.DataFrame) -> pd.DataFrame:
     d["yt"] = np.log(d["total"] / d["m5_anchor_total"])
     d["yc"] = d["congestion"] - d["m5_anchor_congestion"]
     phi, psi = np.full(len(d), np.nan), np.full(len(d), np.nan)
-    for h, g in d.groupby("h"):
+    for _h, g in d.groupby("h"):
         for cut, rows in g.groupby("cutoff"):
             prior = g[(g["month"] + pd.DateOffset(months=1) <= cut)]
             pt = prior.dropna(subset=["yt", "dev_total"])
@@ -188,7 +187,7 @@ def long_forecasts(pf: pd.DataFrame, a: pd.DataFrame, model: str) -> pd.DataFram
     Q = np.full((len(d), len(QUANTILES)), np.nan)
     mean = np.full(len(d), np.nan)
     qs = np.asarray(QUANTILES)
-    for (comp, h), g in d.groupby(["component", "h"]):
+    for (comp, _h), g in d.groupby(["component", "h"]):
         known = g.dropna(subset=["err", "point"])
         for cut, rows in g.groupby("cutoff"):
             prior = known[known["month"] + pd.DateOffset(months=1) <= cut]
@@ -294,7 +293,7 @@ def latest_vintage(today: date) -> tuple[pd.Timestamp, pd.Timestamp]:
 
 def live(today: date, choice: dict[str, str]) -> pd.DataFrame:
     """Monthly forecasts of the latest vintage for the six target months, one model per component (`choice`)."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     cut, m1 = latest_vintage(today)
     last = m1 + pd.DateOffset(months=5)
@@ -312,7 +311,7 @@ def live(today: date, choice: dict[str, str]) -> pd.DataFrame:
     out = pd.concat(out, ignore_index=True)
     out = out[["model", "cutoff", "month", "h", "zone", "period", "component", "point", "mean", *QCOLS]].copy()
     out["git_commit"] = registry.git_commit()
-    out["created_utc"] = datetime.now(timezone.utc)
+    out["created_utc"] = datetime.now(UTC)
     out["cutoff"], out["month"] = out["cutoff"].dt.date, out["month"].dt.date
     with registry.connect() as con:
         con.execute(LIVE_SCHEMA)

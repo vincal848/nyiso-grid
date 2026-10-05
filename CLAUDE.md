@@ -78,4 +78,4 @@
   positions, paper-trading track record
 - `uv run lmp m5 <models> [--window validation|holdout]` / `uv run lmp monthly` — M5 monthly DA products (runs / live)
 - `uv run python scripts/daily.py` — daily job: data refresh, build, panel, forecast, nodes, risk, positions, monthly (04:30 ET)
-- `uv run pytest`
+- `uv run pytest` and `uv run ruff check src pipeline scripts tests` (CI runs both)

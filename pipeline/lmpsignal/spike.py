@@ -94,7 +94,7 @@ class SpikeMember:
                 "features": self.features, "threshold": f"zone q{int(THRESH_Q * 100)} of RT total, last {THRESH_DAYS} "
                 "training days", "gpd_days": GPD_DAYS, "decay": DECAY, "penalty": "L1, C by TimeSeriesSplit(3) log loss"}
 
-    def fit(self, tr: pd.DataFrame, thr: pd.Series) -> "SpikeMember":
+    def fit(self, tr: pd.DataFrame, thr: pd.Series) -> SpikeMember:
         X, self.stats = _design(tr, self.features)
         y = tr["spike"].to_numpy()
         best, self.clf = None, None
@@ -138,14 +138,13 @@ class SpikeMember:
 
 def _scores(o: pd.DataFrame, clim: pd.Series) -> pd.DataFrame:
     o = o[o["score_rt"] & o["rt_total"].notna()]
-    y = o["spike"].to_numpy()
     rows = []
     for zone, g in [*o.groupby("zone"), ("ALL", o)]:
         yy = g["spike"].to_numpy()
         p = np.clip(g["p_spike"].to_numpy(), 1e-4, 1 - 1e-4)
         pc = np.clip(g["zone"].map(clim).to_numpy(), 1e-4, 1 - 1e-4)
         pp = np.clip(g["spike_d2_h"].fillna(0).to_numpy() * 0.5 + 0.02, 1e-4, 1 - 1e-4)   # persistence as a probability
-        ll = lambda q: float(-np.mean(yy * np.log(q) + (1 - yy) * np.log(1 - q)))
+        ll = lambda q, yy=yy: float(-np.mean(yy * np.log(q) + (1 - yy) * np.log(1 - q)))
         rows.append({"market": "spike", "component": "rt_total", "zone": str(zone), "base_rate": float(yy.mean()),
                      "brier": float(np.mean((p - yy) ** 2)), "brier_clim": float(np.mean((pc - yy) ** 2)),
                      "brier_persist": float(np.mean((pp - yy) ** 2)), "logloss": ll(p), "logloss_clim": ll(pc),

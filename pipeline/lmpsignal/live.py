@@ -15,7 +15,7 @@ The panel must contain D's feature rows: `lmp panel --through D` (scripts/daily.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pandas as pd
 
@@ -119,7 +119,7 @@ def forecast(d: date, signal: str = SIGNAL_V1) -> pd.DataFrame:
     out.insert(0, "issue_utc", issue_utc(d))
     out.insert(0, "signal", signal)
     out["git_commit"] = registry.git_commit()
-    out["created_utc"] = datetime.now(timezone.utc)
+    out["created_utc"] = datetime.now(UTC)
     out["delivery_date"] = out["delivery_date"].dt.date
     with registry.connect() as con:
         con.execute(SCHEMA)
@@ -157,7 +157,7 @@ def spike_forecast(d: date) -> pd.DataFrame:
     out.insert(0, "issue_utc", issue_utc(d))
     out.insert(0, "model", member.name)
     out["git_commit"] = registry.git_commit()
-    out["created_utc"] = datetime.now(timezone.utc)
+    out["created_utc"] = datetime.now(UTC)
     out["delivery_date"] = out["delivery_date"].dt.date
     path = LIVE_DIR / member.name / f"date={d}.parquet"
     path.parent.mkdir(parents=True, exist_ok=True)

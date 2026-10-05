@@ -22,7 +22,8 @@ def backfill(
     rebuild: bool = typer.Option(False, help="Re-parse months that already have Parquet"),
 ):
     """Download NYISO MIS history and write curated Parquet."""
-    from nyiso.store.backfill import backfill as run, default_end
+    from nyiso.store.backfill import backfill as run
+    from nyiso.store.backfill import default_end
 
     keys = datasets.split(",") if datasets else None
     results = run(keys, start, end or default_end(), workers=workers, rebuild=rebuild)
@@ -61,7 +62,8 @@ def build():
     """Create DuckDB views over curated Parquet and (re)build aggregate tables."""
     import time
 
-    from nyiso.store.catalog import build as run, connect
+    from nyiso.store.catalog import build as run
+    from nyiso.store.catalog import connect
     from nyiso.store.docs import apply_comments, undocumented
 
     t = time.time()

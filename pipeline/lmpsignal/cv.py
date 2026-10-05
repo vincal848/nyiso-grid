@@ -13,8 +13,15 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from lmpsignal.config import (BURN_IN_START, EMBARGO_DAYS, HOLDOUT_END, HOLDOUT_START, VALIDATION_END,
-                              VALIDATION_START, guard)
+from lmpsignal.config import (
+    BURN_IN_START,
+    EMBARGO_DAYS,
+    HOLDOUT_END,
+    HOLDOUT_START,
+    VALIDATION_END,
+    VALIDATION_START,
+    guard,
+)
 
 
 @dataclass(frozen=True)

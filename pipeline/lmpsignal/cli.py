@@ -98,7 +98,8 @@ def loadfix(
     """Weather-to-load correction of the ISOLF D-2 forecast, scored on the validation folds."""
     import time
 
-    from lmpsignal import cv, loadfix as lf, panel
+    from lmpsignal import cv, panel
+    from lmpsignal import loadfix as lf
     from lmpsignal.config import VALIDATION_END
 
     t = time.time()
@@ -199,7 +200,8 @@ def spike(variant: str = typer.Argument("full", help="full | no_storm (declared 
     """M3b RT spike member over the validation folds (budget: 3 full runs, see docs/ROADMAP.md)."""
     import time
 
-    from lmpsignal import cv, panel, spike as sp
+    from lmpsignal import cv, panel
+    from lmpsignal import spike as sp
     from lmpsignal.config import VALIDATION_END
 
     t = time.time()

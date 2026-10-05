@@ -123,7 +123,7 @@ class DDNN(Model):
             return (nll * m).sum() / m.sum().clamp(min=1)
 
         best, best_state, bad, epoch = np.inf, None, 0, 0
-        for epoch in range(self.max_epochs):
+        for epoch in range(self.max_epochs):  # noqa: B007 (used after the loop)
             perm = rng.permutation(tr_idx)
             for s in range(0, len(perm), BATCH):
                 ix = torch.tensor(perm[s:s + BATCH], device=dev)
@@ -151,7 +151,7 @@ class DDNN(Model):
 
         return self._device or ("cuda" if torch.cuda.is_available() else "cpu")
 
-    def fit(self, train: pd.DataFrame) -> "DDNN":
+    def fit(self, train: pd.DataFrame) -> DDNN:
         t0 = time.time()
         idx, X = self._days(train)
         self._zones = sorted(train["zone"].unique())

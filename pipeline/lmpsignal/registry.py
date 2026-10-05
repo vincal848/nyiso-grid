@@ -13,14 +13,14 @@ import hashlib
 import json
 import platform
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib import metadata
 
 import duckdb
 import pandas as pd
 
-from nyiso.config import ROOT
 from lmpsignal.config import EXPERIMENTS_DB, EXPERIMENTS_DIR, FEATURES_DB
+from nyiso.config import ROOT
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (run_id VARCHAR PRIMARY KEY, model VARCHAR, config_json VARCHAR,
@@ -117,14 +117,14 @@ def config_hash(config: dict) -> str:
 
 def start_run(model: str, config: dict, panel_rows: int) -> str:
     h = config_hash({"model": model, **config})
-    run_id = f"{model}-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}-{h[:6]}"
+    run_id = f"{model}-{datetime.now(UTC):%Y%m%dT%H%M%S}-{h[:6]}"
     dfp, dsum = data_fingerprint()
     with connect() as con:
         con.execute("""INSERT INTO runs (run_id, model, config_json, config_hash, panel_rows, created_utc, status,
                                          code_fingerprint, git_commit, data_fingerprint, data_summary, environment)
                        VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)""",
                     [run_id, model, json.dumps(config, sort_keys=True, default=str), h, panel_rows,
-                     datetime.now(timezone.utc), code_fingerprint(), git_commit(), dfp, dsum, environment()])
+                     datetime.now(UTC), code_fingerprint(), git_commit(), dfp, dsum, environment()])
     (EXPERIMENTS_DIR / run_id).mkdir(parents=True, exist_ok=True)
     return run_id
 
@@ -140,7 +140,7 @@ def save_fold(run_id: str, fold: str, preds: pd.DataFrame, scores: pd.DataFrame)
 
 
 def finish_run(run_id: str, status: str = "done", error: str | None = None) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with connect() as con:
         con.execute("""UPDATE runs SET status = ?, finished_utc = ?, error = ?,
                               duration_s = epoch(? - created_utc) WHERE run_id = ?""", [status, now, error, now, run_id])
@@ -162,12 +162,12 @@ def log_exploration(model: str, config: dict, note: str) -> str:
     """Record a configuration that was tried informally on validation data (e.g. a diagnostic script) so it
     counts toward the number of trials in the DSR, even though no full run was stored."""
     h = config_hash({"model": model, **config})
-    run_id = f"{model}-explore-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}-{h[:6]}"
+    run_id = f"{model}-explore-{datetime.now(UTC):%Y%m%dT%H%M%S}-{h[:6]}"
     with connect() as con:
         con.execute("""INSERT INTO runs (run_id, model, config_json, config_hash, panel_rows, created_utc, status,
                                          code_fingerprint, error)
                        VALUES (?, ?, ?, ?, 0, ?, 'exploratory', ?, ?)""",
-                    [run_id, model, json.dumps(config, sort_keys=True, default=str), h, datetime.now(timezone.utc),
+                    [run_id, model, json.dumps(config, sort_keys=True, default=str), h, datetime.now(UTC),
                      code_fingerprint(), note])
     return run_id
 

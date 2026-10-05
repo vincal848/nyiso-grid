@@ -3,7 +3,6 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
-
 from lmpsignal import cv, dart, nodes
 from lmpsignal.live import month_fold
 from lmpsignal.panel import future_grid

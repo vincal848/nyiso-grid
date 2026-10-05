@@ -13,15 +13,15 @@ opposite directions; the structural model's node shift factors are the route to 
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, timedelta
 
 import duckdb
 import numpy as np
 import pandas as pd
 
-from nyiso.config import DB_PATH
 from lmpsignal import cv, registry
 from lmpsignal.config import EXPERIMENTS_DIR
+from nyiso.config import DB_PATH
 
 WINDOW_DAYS = 365
 MIN_OBS = 1000
@@ -110,7 +110,7 @@ def evaluate(run_id: str, folds: list[cv.Fold] | None = None) -> pd.DataFrame:
 # ----------------------------------------------------------------------------- live
 
 def live(d: date, signal: str) -> pd.DataFrame:
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from lmpsignal.live import month_fold
 
@@ -123,7 +123,7 @@ def live(d: date, signal: str) -> pd.DataFrame:
     out = pd.concat([node_forecast(zf, betas(m, month_fold(d).train_end, wh), m) for m in ("da", "rt")], ignore_index=True)
     wh.close()
     out.insert(0, "signal", signal)
-    out["created_utc"] = datetime.now(timezone.utc)
+    out["created_utc"] = datetime.now(UTC)
     with registry.connect() as con:
         con.execute(LIVE_SCHEMA)
         con.execute("DELETE FROM live_node_forecasts WHERE signal = ? AND delivery_date = ?", [signal, d])

@@ -34,9 +34,9 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
-from nyiso.config import DB_PATH
 from lmpsignal import cv, registry
 from lmpsignal.config import BURN_IN_START, EMBARGO_DAYS, FEATURES_DB, INTERNAL_ZONES, VALIDATION_END
+from nyiso.config import DB_PATH
 
 BASE_T = 18.3
 LEVEL = ["hrrr_temp_zone", "hrrr_dewpoint_zone", "hrrr_wind80_zone", "hrrr_cloud_zone", "hrrr_temp_zone_dmean",
@@ -107,7 +107,7 @@ class LinearCorrection:
             cols.extend((terms * (block == b)[:, None]).T)
         return np.nan_to_num(np.column_stack(cols))
 
-    def fit(self, d: pd.DataFrame) -> "LinearCorrection":
+    def fit(self, d: pd.DataFrame) -> LinearCorrection:
         self.coef = {}
         for z, g in d.groupby("zone", observed=True):
             X, y = self._X(g), g["r"].to_numpy()
@@ -142,7 +142,7 @@ class GBMCorrection:
         return {"model": "LightGBM (L2) on relative ISOLF D-2 error, pooled over zones", "params": self.params,
                 "features": self.features}
 
-    def fit(self, d: pd.DataFrame) -> "GBMCorrection":
+    def fit(self, d: pd.DataFrame) -> GBMCorrection:
         self.m = lgb.LGBMRegressor(**self.params).fit(d[self.features], d["r"], categorical_feature=["zone"])
         return self
 

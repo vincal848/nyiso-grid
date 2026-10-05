@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from lmpsignal import cv, panel, registry
+from lmpsignal import cv, registry
 from lmpsignal.config import EMBARGO_DAYS
 from lmpsignal.evaluate import QCOLS, score_table
 from lmpsignal.models.base import EmpiricalQuantiles, Model, truth_long

@@ -22,9 +22,9 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-from nyiso.config import DATA, DB_PATH
 from lmpsignal import registry
 from lmpsignal.structural import constraints as cs
+from nyiso.config import DATA, DB_PATH
 
 STRUCTURE_DB = DATA / "structure.duckdb"
 

@@ -129,7 +129,7 @@ def _fit_predict_series(X_tr: pd.DataFrame, Y_tr: pd.DataFrame, X_te: pd.DataFra
         # every price input block uses its own robust scale
         pp = {c: _vst_params(Xw_f[c].to_numpy()) for c in price_cols}
 
-        def transform(X):
+        def transform(X, pp=pp, mu=mu, sd=sd):
             out = np.empty((len(X), X.shape[1]))
             for j, c in enumerate(X.columns):
                 out[:, j] = _vst(X[c].to_numpy(), *pp[c]) if c in pp else (X[c].to_numpy() - mu[c]) / sd[c]
@@ -185,7 +185,7 @@ class LEAR(Model):
         """Build the daily grids once for the whole run (inputs are as-of; targets only used via lags)."""
         self.design = Design(full_panel, self.inputs)
 
-    def fit(self, train: pd.DataFrame) -> "LEAR":
+    def fit(self, train: pd.DataFrame) -> LEAR:
         self._train = train
         return self
 
