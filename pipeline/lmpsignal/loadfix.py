@@ -18,6 +18,11 @@ ISOLF runs systematically below the `load` (P-58B) actuals, by up to ~13% in MHK
 any fitted model gains from removing that level bias alone. "_adj" benchmarks multiply the ISOLF file by the
 training-window mean ratio per zone x hour; the weather value of a model is its gain over isolf_d2_adj.
 Targets come from the warehouse (`load_zone_5m`, hourly means); the internal zones only.
+
+Price-model feature (`build_oos`): the corrected forecast for every month from 2022-01, each month predicted by a
+model trained only on data ending EMBARGO_DAYS before that month, written to data/features.duckdb `load_fix_oos`
+(logged as run `<model>_oos`). The panel joins it, so price models see a load forecast that was out of sample at
+the time for every training and test row. Workflow: `lmp panel` -> `lmp loadfix gbm --oos` -> `lmp panel`.
 """
 from __future__ import annotations
 
@@ -31,7 +36,7 @@ import pandas as pd
 
 from nyiso.config import DB_PATH
 from lmpsignal import cv, registry
-from lmpsignal.config import EMBARGO_DAYS, INTERNAL_ZONES
+from lmpsignal.config import BURN_IN_START, EMBARGO_DAYS, FEATURES_DB, INTERNAL_ZONES, VALIDATION_END
 
 BASE_T = 18.3
 LEVEL = ["hrrr_temp_zone", "hrrr_dewpoint_zone", "hrrr_wind80_zone", "hrrr_cloud_zone", "hrrr_temp_zone_dmean",
@@ -187,12 +192,14 @@ def _scores(t: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def run(kind: str, p: pd.DataFrame, folds: list[cv.Fold] | None = None, log: bool = True) -> str | None:
+def run(kind: str, p: pd.DataFrame, folds: list[cv.Fold] | None = None, log: bool = True,
+        suffix: str = "") -> str | None:
     model = MODELS[kind]()
     d = frame(p)
     folds = folds or cv.folds()
     ok = d["r"].notna() & d["load_fcst_zone"].notna() & d["hrrr_temp_zone"].notna()
-    run_id = registry.start_run(model.name, {**model.config(), "folds": len(folds), "embargo_days": EMBARGO_DAYS},
+    run_id = registry.start_run(model.name + suffix, {**model.config(), "folds": len(folds), "embargo_days": EMBARGO_DAYS,
+                                                      "first_fold": folds[0].name, "last_fold": folds[-1].name},
                                 int(ok.sum())) if log else None
     try:
         for f in folds:
@@ -225,4 +232,33 @@ def run(kind: str, p: pd.DataFrame, folds: list[cv.Fold] | None = None, log: boo
         if log:
             registry.finish_run(run_id, "failed", f"{type(e).__name__}: {e}")
         raise
+    return run_id
+
+
+def oos_folds(first: str = "2022-01", end=VALIDATION_END) -> list[cv.Fold]:
+    """One block per month from `first` to `end` (exclusive): expanding training window, same embargo."""
+    out = []
+    m = pd.Timestamp(first + "-01")
+    while m < pd.Timestamp(end):
+        nxt = m + pd.offsets.MonthBegin(1)
+        out.append(cv.Fold(f"{m:%Y-%m}", BURN_IN_START, (m - timedelta(days=EMBARGO_DAYS)).date(), m.date(), nxt.date()))
+        m = nxt
+    return out
+
+
+OOS_SCHEMA = """CREATE TABLE IF NOT EXISTS load_fix_oos (ts_utc TIMESTAMPTZ, zone VARCHAR, delivery_date DATE,
+                load_fix DOUBLE, r_hat DOUBLE, run_id VARCHAR)"""
+
+
+def build_oos(kind: str, p: pd.DataFrame, first: str = "2022-01") -> str:
+    """Out-of-sample corrected load for every month from `first` (see module docstring); replaces load_fix_oos."""
+    run_id = run(kind, p, folds=oos_folds(first), log=True, suffix="_oos")
+    pr = registry.predictions(run_id)
+    pr = pr.assign(delivery_date=pd.to_datetime(pr["delivery_date"]).dt.date, run_id=run_id)
+    con = duckdb.connect(str(FEATURES_DB))
+    con.execute(OOS_SCHEMA)
+    con.execute("DELETE FROM load_fix_oos")
+    con.register("pr", pr[["ts_utc", "zone", "delivery_date", "pred", "r_hat", "run_id"]])
+    con.execute("INSERT INTO load_fix_oos SELECT ts_utc, zone, delivery_date, pred, r_hat, run_id FROM pr")
+    con.close()
     return run_id

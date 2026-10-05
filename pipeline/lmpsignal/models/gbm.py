@@ -25,7 +25,7 @@ class GBM(Model):
         self.window_days = window_days
         self.n_jobs = n_jobs
         self.params = {**BASE_PARAMS, **params}
-        self.name = f"gbm_{objective}"
+        self.name = f"gbm_{objective}" + ("" if feature_set == "v1" else f"_{feature_set}")
         self.models: dict[tuple[str, str], lgb.LGBMRegressor] = {}
         self.feature_set = feature_set
         self.features = list(FEATURE_SETS[feature_set])

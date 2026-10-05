@@ -53,3 +53,22 @@ def test_training_rows_end_before_the_embargo_and_correction_is_multiplicative(m
     s = loadfix._scores(t.assign(isolf_d2=t["load_fcst_zone"]))
     assert np.isclose(s.loc[s["zone"] == "ALL", "mape"].iloc[0], 50 / 1050)
     assert "NYISO" not in set(s["zone"])                                 # total needs all 11 zones
+
+
+def test_oos_months_are_predicted_from_data_ending_before_the_embargo():
+    from datetime import timedelta
+
+    folds = loadfix.oos_folds("2022-01", end="2023-01-01")
+    assert [f.name for f in folds][:2] == ["2022-01", "2022-02"] and folds[-1].name == "2022-12"
+    for f in folds:
+        assert f.train_end <= f.test_start - timedelta(days=EMBARGO_DAYS)
+
+
+def test_feature_sets_stay_frozen_when_columns_are_added():
+    from lmpsignal.panel import FEATURE_SETS
+
+    v1, v2, v3 = (set(FEATURE_SETS[k]) for k in ("v1", "v2", "v3"))
+    assert not any(c.startswith(("hrrr_", "load_fix", "load_surprise")) or c == "temp_fcst_zone_isolf" for c in v1)
+    assert v1 < v2 < v3
+    assert not any(c.startswith(("load_fix", "load_surprise")) for c in v2)
+    assert len(FEATURE_SETS["v1"]) == 36                     # the M2-M3 panel; changing it invalidates old configs

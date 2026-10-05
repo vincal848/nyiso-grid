@@ -50,7 +50,13 @@ def _ivst(z, med, mad):
 class Design:
     """Daily grids for every variable LEAR needs, built once per run from the full panel."""
 
-    def __init__(self, p: pd.DataFrame):
+    def __init__(self, p: pd.DataFrame, inputs: str = "isolf_gfs"):
+        if inputs == "loadfix_hrrr":
+            # weather-corrected load and HRRR temperature, falling back to ISOLF / GFS where missing
+            p = p.assign(load_fcst_zone=p["load_fix_zone"].fillna(p["load_fcst_zone"]),
+                         load_fcst_nyiso=p["load_fix_nyiso"].fillna(p["load_fcst_nyiso"]),
+                         temp_fcst_zone=p["hrrr_temp_zone"].fillna(p["temp_fcst_zone"]),
+                         temp_fcst_nyiso=p["hrrr_temp_nyiso"].fillna(p["temp_fcst_nyiso"]))
         self.idx = pd.MultiIndex.from_frame(p[["zone", "delivery_date"]].drop_duplicates()
                                             .sort_values(["zone", "delivery_date"]))
         self.g = {}
@@ -157,7 +163,10 @@ def _fit_predict_series(X_tr: pd.DataFrame, Y_tr: pd.DataFrame, X_te: pd.DataFra
 class LEAR(Model):
     name = "lear"
 
-    def __init__(self, windows=(364, 728, None), n_jobs: int = 10, clip: bool = True):
+    def __init__(self, windows=(364, 728, None), n_jobs: int = 10, clip: bool = True, inputs: str = "isolf_gfs"):
+        self.inputs = inputs
+        if inputs != "isolf_gfs":
+            self.name = f"{type(self).name}_wx"
         self.windows = tuple(windows)
         self.clip = clip
         self.n_jobs = n_jobs
@@ -168,11 +177,13 @@ class LEAR(Model):
         return {"model": "LEAR", "windows": [w or "all" for w in self.windows], "penalty": "LassoLarsIC(aic)",
                 "vst": "asinh(median/MAD)", "refit": "per fold (monthly)",
                 "clip": "training range in VST space" if self.clip else "none",
-                "inputs": "DA lags D-1,2,3,7 x24; RT lags D-2,3 x24; load zone+NYISO x24; temp x24; gas; dow; holiday"}
+                "inputs": "DA lags D-1,2,3,7 x24; RT lags D-2,3 x24; load zone+NYISO x24; temp x24; gas; dow; holiday",
+                **({"load_temp_source": "load_fix (loadfix_gbm OOS) + HRRR temperature; ISOLF/GFS where missing"}
+                   if self.inputs != "isolf_gfs" else {})}
 
     def prepare(self, full_panel: pd.DataFrame) -> None:
         """Build the daily grids once for the whole run (inputs are as-of; targets only used via lags)."""
-        self.design = Design(full_panel)
+        self.design = Design(full_panel, self.inputs)
 
     def fit(self, train: pd.DataFrame) -> "LEAR":
         self._train = train

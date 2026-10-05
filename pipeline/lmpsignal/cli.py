@@ -57,6 +57,8 @@ MODELS = {
     "zero_congestion": lambda: __import__("lmpsignal.models.naive", fromlist=["ZeroCongestion"]).ZeroCongestion(),
     "gbm_l1": lambda: __import__("lmpsignal.models.gbm", fromlist=["GBM"]).GBM(objective="l1"),
     "gbm_l2": lambda: __import__("lmpsignal.models.gbm", fromlist=["GBM"]).GBM(objective="l2"),
+    "gbm_l1_v3": lambda: __import__("lmpsignal.models.gbm", fromlist=["GBM"]).GBM(objective="l1", feature_set="v3"),
+    "lear_wx": lambda: __import__("lmpsignal.models.lear", fromlist=["LEAR"]).LEAR(inputs="loadfix_hrrr"),
 }
 
 
@@ -84,6 +86,7 @@ def train(
 def loadfix(
     kind: str = typer.Argument(..., help="lin (classical per-zone ridge), gbm (LightGBM) or gbm_cal (ablation: no weather)"),
     smoke: int = typer.Option(0, help="Run only the first N folds WITHOUT logging (not a trial)"),
+    oos: bool = typer.Option(False, help="Write month-by-month out-of-sample forecasts to load_fix_oos (panel feature)"),
 ):
     """Weather-to-load correction of the ISOLF D-2 forecast, scored on the validation folds."""
     import time
@@ -93,6 +96,10 @@ def loadfix(
 
     t = time.time()
     p = panel.load(end=VALIDATION_END)
+    if oos:
+        rid = lf.build_oos(kind, p)
+        typer.echo(f"load_fix_oos <- {rid} in {time.time() - t:.0f}s; rebuild the panel (lmp panel) to join it")
+        return
     rid = lf.run(kind, p, folds=cv.folds()[:smoke] if smoke else None, log=not smoke)
     typer.echo(f"loadfix_{kind} -> {rid or '(smoke test, not logged)'} in {time.time() - t:.0f}s")
 
@@ -114,6 +121,12 @@ POST_PRESETS = {
     # M2.5 follow-ups
     "combo3_eq_aci": (["lear_clip", "gbm_l1"], [{"op": "combine", "weights": "equal"}, {"op": "clip"},
                                                 {"op": "calibrate", "method": "aci"}]),
+    # weather-corrected load + HRRR members (2026-10-04), mirroring lear_clip / gbm_l1_aci / combo3_eq_aci
+    "lear_wx_clip": (["lear_wx"], [{"op": "clip"}, {"op": "calibrate", "method": "oos_residual"}]),
+    "lear_wx_clip_aci": (["lear_wx"], [{"op": "clip"}, {"op": "calibrate", "method": "aci"}]),
+    "gbm_l1_v3_aci": (["gbm_l1_v3"], [{"op": "calibrate", "method": "aci"}]),
+    "combo3wx_eq_aci": (["lear_wx_clip", "gbm_l1_v3"], [{"op": "combine", "weights": "equal"}, {"op": "clip"},
+                                                       {"op": "calibrate", "method": "aci"}]),
     "lear2_long_aci": (["lear2"], [{"op": "windows", "use": ["w364", "w728", "wall"]},
                                    {"op": "calibrate", "method": "aci"}]),
     "assemble_v1e_v2c_aci": (["lear_clip", "lear2"], [{"op": "assemble", "components": {
