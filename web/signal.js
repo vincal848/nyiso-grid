@@ -152,7 +152,77 @@ async function drawFan(date) {
   }), true);
 }
 
+// ------------------------------------------------------------------ live signal (lmp forecast / lmp nodes)
+const live = { market: "da", inited: false };
+
+async function liveInit() {
+  if (live.inited) return;
+  live.inited = true;
+  $$("#live-mkt button").forEach((b) => (b.onclick = () => {
+    $$("#live-mkt button").forEach((x) => x.classList.toggle("active", x === b));
+    live.market = b.dataset.v; drawLive(); drawLiveNodes();
+  }));
+  $("#live-zone").innerHTML = INTERNAL.map((z) => `<option ${z === "N.Y.C." ? "selected" : ""}>${z}</option>`).join("");
+  const dates = await api("/api/live/dates").catch(() => []);
+  $("#live-date").innerHTML = dates.map((r) => `<option>${r.delivery_date}</option>`).join("");
+  ["live-date", "live-zone", "live-comp"].forEach((id) => ($("#" + id).onchange = () => { drawLive(); drawLiveNodes(); }));
+}
+
+async function drawLive() {
+  const date = $("#live-date").value, zone = $("#live-zone").value, comp = $("#live-comp").value;
+  if (!date) return;
+  const d = await api(`/api/live/forecast?zone=${encodeURIComponent(zone)}&date=${date}&component=${comp}`);
+  const rows = d.rows.filter((r) => r.market === live.market);
+  $("#live-title").textContent = `Live forecast (signal v1): ${live.market.toUpperCase()} ${comp}, ${zone}, delivery ${date}`;
+  if (!rows.length) { chart("c-live").clear(); return; }
+  $("#live-src").textContent = `Issued ${rows[0].issue_utc} UTC (05:00 ET on D−1), code ${rows[0].git_commit || "?"}. ` +
+    "Actuals appear once published.";
+  const band = (lo, hi, name) => [
+    { name, type: "line", stack: name, data: rows.map((r) => r[lo]), lineStyle: { width: 0 }, showSymbol: false, silent: true,
+      itemStyle: { color: css("--s1") } },
+    { name, type: "line", stack: name, data: rows.map((r) => (r[hi] == null || r[lo] == null ? null : r[hi] - r[lo])),
+      lineStyle: { width: 0 }, showSymbol: false, areaStyle: { color: css("--s1"), opacity: 0.25 }, itemStyle: { color: css("--s1") }, silent: true },
+  ];
+  chart("c-live").setOption(base({
+    tooltip: { ...base().tooltip, valueFormatter: (v) => (v == null ? "–" : `$${num(v, 2)}`) },
+    legend: { ...base().legend, data: ["90% interval", "50% interval", "Forecast mean", "Actual"] },
+    xAxis: { ...base().xAxis, data: rows.map((r) => hm(r.ts_utc)), boundaryGap: false },
+    series: [...band("q05", "q95", "90% interval"), ...band("q25", "q75", "50% interval"),
+             line("Forecast mean", rows.map((r) => r.mean), css("--s1")),
+             line("Actual", rows.map((r) => r.actual), css("--s2"), { lineStyle: { width: 2, type: "dashed", color: css("--s2") } })],
+  }), true);
+}
+
+async function drawTrack() {
+  const rows = await api("/api/live/track?days=90").catch(() => []);
+  if (!rows.length) { chart("c-track").clear(); return; }
+  const days = [...new Set(rows.map((r) => r.delivery_date))];
+  const pick = (m, k) => days.map((d) => (rows.find((r) => r.delivery_date === d && r.market === m) || {})[k] ?? null);
+  chart("c-track").setOption(base({
+    tooltip: { ...base().tooltip },
+    legend: { ...base().legend, data: ["DA MAE", "RT MAE", "DA 90% coverage", "RT 90% coverage"] },
+    xAxis: { ...base().xAxis, data: days },
+    yAxis: [{ ...base().yAxis, name: "$/MWh" }, { ...base().yAxis, name: "coverage", min: 0, max: 1, position: "right" }],
+    series: [line("DA MAE", pick("da", "mae"), css("--s1")), line("RT MAE", pick("rt", "mae"), css("--s2")),
+             line("DA 90% coverage", pick("da", "cov90"), css("--s1"), { yAxisIndex: 1, lineStyle: { type: "dashed", color: css("--s1") } }),
+             line("RT 90% coverage", pick("rt", "cov90"), css("--s2"), { yAxisIndex: 1, lineStyle: { type: "dashed", color: css("--s2") } })],
+  }), true);
+}
+
+async function drawLiveNodes() {
+  const date = $("#live-date").value;
+  if (!date) return;
+  const d = await api(`/api/live/nodes?date=${date}&market=${live.market}`).catch(() => ({ nodes: [] }));
+  const n = [...d.nodes].sort((a, b) => b.total - a.total);
+  const pickRows = n.length > 16 ? [...n.slice(0, 8), ...n.slice(-8)] : n;
+  $("#live-nodes-title").textContent = `Nodes: highest and lowest ${live.market.toUpperCase()} forecast price, ${date} (daily mean)`;
+  $("#t-live-nodes tbody").innerHTML = pickRows.map((r) =>
+    `<tr><td>${r.name}</td><td>${r.zone}</td><td class="num">${num(r.total, 2)}</td><td class="num">${num(r.congestion, 2)}</td></tr>`).join("");
+}
+
 window.renderSignal = async function (date) {
+  await liveInit();
+  await Promise.all([drawLive().catch(() => {}), drawTrack().catch(() => {}), drawLiveNodes().catch(() => {})]);
   await sigInit();
   if (!$("#t-sig tbody").children.length) await loadStructure().catch(() => {});
   await drawFan(date).catch(() => {});

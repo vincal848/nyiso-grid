@@ -16,6 +16,8 @@ Availability rules (see docs/DATA.md "As-of availability"):
 """
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 import duckdb
 import pandas as pd
 
@@ -129,6 +131,15 @@ SELECT h.ts_utc, h.ts_local, CAST(h.ts_local AS DATE) AS delivery_date, h.zone,
        h.rt_flag
 FROM wh.lbmp_zone_hourly h
 WHERE h.zone IN ({locs}) AND CAST(h.ts_local AS DATE) >= DATE '{start}';
+
+-- forecast rows for delivery days after the last priced day (targets NULL): the live forecast needs day D
+-- before any of its prices exist
+INSERT INTO tgt
+SELECT f.ts_utc, f.ts_local, CAST(f.ts_local AS DATE),
+       f.zone, timezone({ET}, CAST(CAST(f.ts_local AS DATE) - INTERVAL 1 DAY AS TIMESTAMP) + INTERVAL {ISSUE_HOUR_ET} HOUR),
+       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+FROM future_grid f
+WHERE CAST(f.ts_local AS DATE) > (SELECT max(delivery_date) FROM tgt);
 
 CREATE OR REPLACE TEMP TABLE base AS
 SELECT t.*, hour(t.ts_local) AS hour_local,
@@ -301,14 +312,31 @@ ORDER BY b.ts_utc, b.zone;
 """
 
 
-def build(start: str | None = None) -> int:
-    """(Re)build the panel in data/features.duckdb. Returns the row count."""
+def future_grid(through: date | None) -> pd.DataFrame:
+    """Hourly (ts_utc, ts_local, zone) rows for local delivery days up to `through` (the SQL keeps only days after
+    the last priced day). DST days get 23 / 25 rows, like the priced rows."""
+    if through is None:
+        return pd.DataFrame({"ts_utc": pd.Series(dtype="datetime64[ns, UTC]"), "ts_local": pd.Series(dtype="datetime64[ns]"),
+                             "zone": pd.Series(dtype=str)})
+    t0 = pd.Timestamp(through - timedelta(days=7)).tz_localize("America/New_York")
+    t1 = pd.Timestamp(through + timedelta(days=1)).tz_localize("America/New_York")
+    ts = pd.date_range(t0.tz_convert("UTC"), t1.tz_convert("UTC"), freq="h", inclusive="left")
+    g = pd.DataFrame({"ts_utc": ts}).merge(pd.DataFrame({"zone": LOCATIONS}), how="cross")
+    g["ts_local"] = g["ts_utc"].dt.tz_convert("America/New_York").dt.tz_localize(None)
+    return g
+
+
+def build(start: str | None = None, through: date | None = None) -> int:
+    """(Re)build the panel in data/features.duckdb. Returns the row count. `through`: also add feature-only rows
+    for delivery days up to this date (live forecasting)."""
     start = start or str(BURN_IN_START)
     con = duckdb.connect(str(FEATURES_DB))
     con.execute(f"ATTACH '{DB_PATH.as_posix()}' AS wh (READ_ONLY)")
     hol = pd.DataFrame(holiday_table(2021, 2027), columns=["d", "name"])
     con.register("holidays_df", hol)
     con.execute("CREATE OR REPLACE TEMP TABLE holidays AS SELECT CAST(d AS DATE) AS d, name FROM holidays_df")
+    con.register("future_df", future_grid(through))
+    con.execute("CREATE OR REPLACE TEMP TABLE future_grid AS SELECT * FROM future_df")
     from lmpsignal.loadfix import OOS_SCHEMA
 
     con.execute(OOS_SCHEMA)

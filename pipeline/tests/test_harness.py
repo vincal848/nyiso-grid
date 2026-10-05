@@ -42,6 +42,7 @@ def test_holdout_is_locked(monkeypatch):
         cv.holdout_fold()
     with pytest.raises(config.HoldoutLocked):
         cv.folds(end=date(2026, 1, 1))
+    config.guard(config.HOLDOUT_END)                 # live days after the holdout year are not locked
     monkeypatch.setenv("LMP_UNLOCK_HOLDOUT", "I_AM_RUNNING_M7")
     assert cv.holdout_fold().test_start == config.HOLDOUT_START
 

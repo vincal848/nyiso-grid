@@ -9,6 +9,9 @@
 - `pipeline/lmpsignal/` — LMP forecasting signal (phase 2). Reads the warehouse read-only; writes only
   `data/features.duckdb`, `data/experiments.duckdb`, `data/experiments/` and `data/structure.duckdb`.
   Must not import `nyiso.api`. The dashboard API may *read* those files (never import pipeline code).
+  The frozen signal (`docs/SIGNAL_V1.md`, `pipeline/lmpsignal/presets.py`) runs live via `lmp forecast`; its outputs go
+  to experiments.duckdb (`live_forecasts`, `live_node_forecasts`) and data/experiments/live/. Ingestion for the daily
+  job is orchestrated outside the pipeline by scripts/daily.py.
 - Keep everything a model computes: predictions with quantiles per fold, and model internals as
   artifacts (`registry.save_artifact`; see `docs/STRUCTURE.md`). Metrics are derived, never the only record.
 - DART/TCC pricing is a later phase: build and validate the LMP signal first.
@@ -65,4 +68,8 @@
 - `uv run lmp train <lear|lear2|gbm_l1|gbm_l2> [--smoke N]` — validate a model (smoke = first N folds, not logged)
 - `uv run lmp graphs` — compile structural artifacts into data/structure.duckdb (dashboard Signal tab)
 - `uv run lmp post <preset>` — clip / combine / calibrate stored predictions (seconds to minutes, logged as a trial)
+- `uv run lmp m7 <signal>` — the single holdout evaluation (needs `LMP_UNLOCK_HOLDOUT=I_AM_RUNNING_M7`; done for v1)
+- `uv run lmp forecast [--date D]` / `uv run lmp nodes [--date D]` — live forecast of the frozen signal (zones / nodes)
+- `uv run lmp dart` — DART prototype backtest on stored forecasts -> docs/experiments/dart_prototype.md
+- `uv run python scripts/daily.py` — daily job: data refresh, build, panel, forecast, nodes (scheduled 04:30 ET)
 - `uv run pytest`

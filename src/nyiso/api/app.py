@@ -322,6 +322,79 @@ def signal_forecast(run_id: str, zone: str, date_: str = Query(..., alias="date"
     return js({"run_id": run_id, "zone": zone, "market": market, "component": component, "date": date_, "rows": rows})
 
 
+# ------------------------------------------------------------------ live signal (lmp forecast / lmp nodes)
+
+def _lq(sql: str, params: list | None = None) -> list[dict]:
+    """Read-only query over experiments.duckdb (live tables) with the warehouse attached as `wh`."""
+    if not EXPERIMENTS_DB.exists():
+        return []
+    con = duckdb.connect(str(EXPERIMENTS_DB), read_only=True)
+    try:
+        con.execute("SET TimeZone = 'UTC'")
+        if not con.execute("SELECT count(*) FROM duckdb_tables() WHERE table_name = 'live_forecasts'").fetchone()[0]:
+            return []
+        con.execute(f"ATTACH '{DB_PATH.as_posix()}' AS wh (READ_ONLY)")
+        res = con.execute(sql, params or [])
+        cols = [d[0] for d in res.description]
+        return [dict(zip(cols, r)) for r in res.fetchall()]
+    finally:
+        con.close()
+
+
+@app.get("/api/live/dates")
+def live_dates():
+    rows = _lq("SELECT DISTINCT delivery_date, signal, max(created_utc) AS created FROM live_forecasts "
+               "GROUP BY ALL ORDER BY delivery_date DESC")
+    return js(rows)
+
+
+@app.get("/api/live/forecast")
+def live_forecast(zone: str = "N.Y.C.", date_: str | None = Query(None, alias="date"), component: str = "total"):
+    d = date_ or (_lq("SELECT max(delivery_date) AS d FROM live_forecasts") or [{"d": None}])[0]["d"]
+    if d is None:
+        return js({"date": None, "rows": []})
+    rows = _lq("""SELECT f.market, f.ts_utc, f.hour_local, f.mean, f.q05, f.q25, f.q50, f.q75, f.q95,
+                         CASE f.market WHEN 'da' THEN z.da_lbmp ELSE z.rt_lbmp END AS actual_total,
+                         CASE f.market WHEN 'da' THEN -z.da_mcc ELSE -z.rt_mcc END AS actual_congestion,
+                         f.issue_utc, f.git_commit
+                  FROM live_forecasts f
+                  LEFT JOIN wh.lbmp_zone_hourly z ON z.zone = f.zone AND z.ts_utc = f.ts_utc
+                  WHERE f.zone = ? AND f.delivery_date = ? AND f.component = ? ORDER BY f.market, f.ts_utc""",
+               [zone, str(d), component])
+    for r in rows:
+        r["actual"] = r.pop("actual_congestion") if component == "congestion" else r.pop("actual_total")
+        r.pop("actual_congestion", None), r.pop("actual_total", None)
+    return js({"date": str(d), "zone": zone, "component": component, "rows": rows})
+
+
+@app.get("/api/live/track")
+def live_track(days: int = 60):
+    """Daily track record of the live total-price forecast over the internal and external zones."""
+    rows = _lq("""SELECT f.delivery_date, f.market, count(*) AS n,
+                         avg(abs(f.mean - CASE f.market WHEN 'da' THEN z.da_lbmp ELSE z.rt_lbmp END)) AS mae,
+                         avg(CASE WHEN (CASE f.market WHEN 'da' THEN z.da_lbmp ELSE z.rt_lbmp END) BETWEEN f.q05 AND f.q95
+                                  THEN 1 ELSE 0 END) AS cov90
+                  FROM live_forecasts f
+                  JOIN wh.lbmp_zone_hourly z ON z.zone = f.zone AND z.ts_utc = f.ts_utc
+                  WHERE f.component = 'total' AND (CASE f.market WHEN 'da' THEN z.da_lbmp ELSE z.rt_lbmp END) IS NOT NULL
+                    AND f.delivery_date >= current_date - CAST(? AS INTEGER)
+                  GROUP BY ALL ORDER BY f.delivery_date, f.market""", [days])
+    return js(rows)
+
+
+@app.get("/api/live/nodes")
+def live_nodes(date_: str | None = Query(None, alias="date"), market: str = "da"):
+    """Node forecast of total price, averaged over the delivery day, with coordinates for the map."""
+    d = date_ or (_lq("SELECT max(delivery_date) AS d FROM live_forecasts") or [{"d": None}])[0]["d"]
+    if d is None:
+        return js({"date": None, "nodes": []})
+    rows = _lq("""SELECT n.ptid, m.name, n.zone, m.lat, m.lon, avg(n.total) AS total, avg(n.congestion) AS congestion
+                  FROM live_node_forecasts n JOIN wh.nodes m USING (ptid)
+                  WHERE n.delivery_date = ? AND n.market = ? AND m.lat IS NOT NULL
+                  GROUP BY ALL""", [str(d), market])
+    return js({"date": str(d), "market": market, "nodes": rows})
+
+
 # ------------------------------------------------------------------ static
 
 @app.get("/")

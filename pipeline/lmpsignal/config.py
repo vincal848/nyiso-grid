@@ -44,6 +44,6 @@ def holdout_unlocked() -> bool:
 
 def guard(delivery_date: date) -> None:
     """Raise if code tries to score or train on the holdout before it is explicitly unlocked."""
-    if delivery_date >= HOLDOUT_START and not holdout_unlocked():
+    if HOLDOUT_START <= delivery_date < HOLDOUT_END and not holdout_unlocked():     # later dates are live, not holdout
         raise HoldoutLocked(f"{delivery_date} is in the final holdout ({HOLDOUT_START}..{HOLDOUT_END}). "
                             "Set LMP_UNLOCK_HOLDOUT=I_AM_RUNNING_M7 only for the single final evaluation.")

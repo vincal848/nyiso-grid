@@ -12,7 +12,8 @@ def main():
 
 
 @app.command("panel")
-def panel_cmd():
+def panel_cmd(through: str = typer.Option(None, help="Also add feature-only rows for delivery days up to YYYY-MM-DD "
+                                                       "(live forecasting)")):
     """Build the point-in-time modeling panel and prove no feature uses post-issue data."""
     import time
 
@@ -22,7 +23,9 @@ def panel_cmd():
     from lmpsignal.config import FEATURES_DB
 
     t = time.time()
-    n = panel.build()
+    from datetime import date
+
+    n = panel.build(through=date.fromisoformat(through) if through else None)
     con = duckdb.connect(str(FEATURES_DB), read_only=True)
     leaks = panel.check_asof(con)
     typer.echo(f"panel: {n:,} rows in {time.time() - t:.1f}s")
@@ -104,39 +107,7 @@ def loadfix(
     typer.echo(f"loadfix_{kind} -> {rid or '(smoke test, not logged)'} in {time.time() - t:.0f}s")
 
 
-POST_PRESETS = {
-    # name: (parent model names, steps)
-    "lear_clip": (["lear"], [{"op": "clip"}, {"op": "calibrate", "method": "oos_residual"}]),
-    "lear_clip_aci": (["lear"], [{"op": "clip"}, {"op": "calibrate", "method": "aci"}]),
-    "gbm_l1_aci": (["gbm_l1"], [{"op": "calibrate", "method": "aci"}]),
-    "combo_eq_aci": (["lear", "gbm_l1"], [{"op": "combine", "weights": "equal"}, {"op": "clip"},
-                                          {"op": "calibrate", "method": "aci"}]),
-    "combo_inv_aci": (["lear", "gbm_l1"], [{"op": "combine", "weights": "inv_mae"}, {"op": "clip"},
-                                           {"op": "calibrate", "method": "aci"}]),
-    "lear2_aci": (["lear2"], [{"op": "calibrate", "method": "aci"}]),
-    "combo2_eq_aci": (["lear2", "gbm_l1"], [{"op": "combine", "weights": "equal"}, {"op": "clip"},
-                                            {"op": "calibrate", "method": "aci"}]),
-    "combo2_inv_aci": (["lear2", "gbm_l1"], [{"op": "combine", "weights": "inv_mae"}, {"op": "clip"},
-                                             {"op": "calibrate", "method": "aci"}]),
-    # M2.5 follow-ups
-    "combo3_eq_aci": (["lear_clip", "gbm_l1"], [{"op": "combine", "weights": "equal"}, {"op": "clip"},
-                                                {"op": "calibrate", "method": "aci"}]),
-    # weather-corrected load + HRRR members (2026-10-04), mirroring lear_clip / gbm_l1_aci / combo3_eq_aci
-    "lear_wx_clip": (["lear_wx"], [{"op": "clip"}, {"op": "calibrate", "method": "oos_residual"}]),
-    "lear_wx_clip_aci": (["lear_wx"], [{"op": "clip"}, {"op": "calibrate", "method": "aci"}]),
-    "gbm_l1_v3_aci": (["gbm_l1_v3"], [{"op": "calibrate", "method": "aci"}]),
-    "combo3wx_eq_aci": (["lear_wx_clip", "gbm_l1_v3"], [{"op": "combine", "weights": "equal"}, {"op": "clip"},
-                                                       {"op": "calibrate", "method": "aci"}]),
-    # declared candidate of the training protocol (docs/ROADMAP.md): energy/loss from the better combo by pooled total
-    # CRPS (combo3_eq_aci 7.593 vs combo3wx_eq_aci 7.606), congestion from lear2_long_aci, then ACI
-    "assemble_v1_final": (["combo3_eq_aci", "lear2_long_aci"], [{"op": "assemble", "components": {
-        "energy": "combo3_eq_aci", "loss": "combo3_eq_aci", "congestion": "lear2_long_aci"}},
-        {"op": "calibrate", "method": "aci"}]),
-    "lear2_long_aci": (["lear2"], [{"op": "windows", "use": ["w364", "w728", "wall"]},
-                                   {"op": "calibrate", "method": "aci"}]),
-    "assemble_v1e_v2c_aci": (["lear_clip", "lear2"], [{"op": "assemble", "components": {
-        "energy": "lear_clip", "loss": "lear_clip", "congestion": "lear2"}}, {"op": "calibrate", "method": "aci"}]),
-}
+from lmpsignal.presets import FROZEN_BASES, POST_PRESETS, SIGNAL_V1  # noqa: E402
 
 
 @app.command()
@@ -163,13 +134,6 @@ def post(name: str = typer.Argument(..., help=f"Preset: {', '.join(POST_PRESETS)
         typer.echo(weights.groupby(["market", "component"]).mean(numeric_only=True).round(3).to_string())
 
 
-# Base-model constructors exactly as validated for signal v1 (docs/SIGNAL_V1.md). The validated LEAR run predates
-# LEAR's internal clip option (clipping comes from the lear_clip post step), so it is LEAR(clip=False); verified to
-# reproduce the stored validation predictions exactly (fold 2022-10, max abs diff 0).
-FROZEN_BASES = {
-    "lear": lambda: __import__("lmpsignal.models.lear", fromlist=["LEAR"]).LEAR(clip=False),
-    "gbm_l1": lambda: __import__("lmpsignal.models.gbm", fromlist=["GBM"]).GBM(objective="l1"),
-}
 
 
 @app.command()
@@ -222,6 +186,66 @@ def m7(candidate: str = typer.Argument(..., help="The frozen signal v1 (a model 
     (registry.EXPERIMENTS_DIR / "m7_lineage.json").write_text(json.dumps({"candidate": candidate, **resolved}, indent=1))
     typer.echo(f"M7 {candidate} -> {final}; benchmarks {resolved['persist_da_d1']}, {resolved['lago_naive']} "
                f"in {time.time() - t:.0f}s")
+
+
+@app.command()
+def forecast(day: str = typer.Option(None, "--date", help="Delivery day YYYY-MM-DD (default: tomorrow, local)")):
+    """Live forecast of the frozen signal for one delivery day -> experiments.duckdb live_forecasts."""
+    import time
+    from datetime import date, datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    from lmpsignal import live
+
+    t = time.time()
+    d = date.fromisoformat(day) if day else datetime.now(ZoneInfo("America/New_York")).date() + timedelta(days=1)
+    out = live.forecast(d)
+    tot = out[(out["component"] == "total")].groupby("market")["mean"].mean()
+    typer.echo(f"forecast {d}: {len(out):,} rows; mean total DA {tot.get('da', float('nan')):.2f}, "
+               f"RT {tot.get('rt', float('nan')):.2f} $/MWh  ({time.time() - t:.0f}s)")
+
+
+@app.command()
+def nodes(day: str = typer.Option(None, "--date", help="Delivery day for the live node forecast (default: tomorrow)"),
+          evaluate: bool = typer.Option(False, help="Score the node mapping once on the validation folds (signal v1)")):
+    """Node-level forecasts from the signal's zone forecasts (energy + mapped loss and congestion)."""
+    import time
+    from datetime import date, datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    from lmpsignal import nodes as nd
+
+    t = time.time()
+    if evaluate:
+        from lmpsignal.config import EXPERIMENTS_DIR
+
+        runs = __import__("lmpsignal.diagnostics", fromlist=["completed_runs"]).completed_runs([SIGNAL_V1])
+        res = nd.evaluate(runs[SIGNAL_V1])
+        out = EXPERIMENTS_DIR / "nodes_v1_validation.csv"
+        res.to_csv(out, index=False)
+        typer.echo(res.round(3).to_string(index=False))
+        typer.echo(f"-> {out} ({time.time() - t:.0f}s)")
+        return
+    d = date.fromisoformat(day) if day else datetime.now(ZoneInfo("America/New_York")).date() + timedelta(days=1)
+    out = nd.live(d, SIGNAL_V1)
+    typer.echo(f"nodes {d}: {out['ptid'].nunique()} nodes, {len(out):,} rows ({time.time() - t:.0f}s)")
+
+
+@app.command()
+def dart():
+    """DART prototype: backtest zonal virtual positions from the signal on validation and (if run) the M7 holdout."""
+    from pathlib import Path
+
+    from lmpsignal import dart as dt
+    from lmpsignal.diagnostics import completed_runs
+
+    val = completed_runs([SIGNAL_V1])[SIGNAL_V1]
+    hold = dt.lineage_holdout(SIGNAL_V1)
+    summary, by_zone = dt.backtest(val, hold)
+    out = Path(__file__).resolve().parents[2] / "docs" / "experiments" / "dart_prototype.md"
+    dt.write_report(summary, by_zone, out)
+    typer.echo(summary.round(3).to_string(index=False))
+    typer.echo(f"-> {out}")
 
 
 @app.command()

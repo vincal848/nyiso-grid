@@ -192,18 +192,11 @@ def calibrate_aci(df: pd.DataFrame, window_days: int = 365, gamma: float = 0.01,
 
 # ------------------------------------------------------------------------------------------ runs
 
-def run(name: str, parents: list[str], steps: list[dict], panel: pd.DataFrame | None = None,
-        folds: list[cv.Fold] | None = None, log: bool = True) -> tuple[str | None, pd.DataFrame]:
-    """Apply `steps` (in order) to parent runs and score/log the result as a new trial.
-
-    steps: [{"op": "combine", "weights": "equal"|"inv_mae"}, {"op": "clip"},
-            {"op": "calibrate", "method": "aci"|"oos_residual", ...}]
-    """
-    folds = folds or cv.folds()
-    requested = [dict(s) for s in steps]
-    want = ["mean"] + (["mean_w56", "mean_w364", "mean_w728", "mean_wall"]
-                       if any(s["op"] == "windows" for s in steps) else [])
-    loaded = {p: load_run(p, want) for p in parents}
+def apply(loaded: dict[str, pd.DataFrame], steps: list[dict], panel: pd.DataFrame | None,
+          folds: list[cv.Fold]) -> tuple[pd.DataFrame, list[dict]]:
+    """Apply `steps` (in order) to in-memory parent predictions {name: frame}; no registry access.
+    Used by `run` (logged trials) and by the daily live forecast (lmpsignal/live.py)."""
+    parents = list(loaded)
     extra_log: list[dict] = []
     if steps and steps[0]["op"] == "assemble":
         df = assemble(loaded, steps[0]["components"])
@@ -230,6 +223,21 @@ def run(name: str, parents: list[str], steps: list[dict], panel: pd.DataFrame | 
     for c in QCOLS:
         if c not in df:
             df[c] = np.nan
+    return df, extra_log
+
+
+def run(name: str, parents: list[str], steps: list[dict], panel: pd.DataFrame | None = None,
+        folds: list[cv.Fold] | None = None, log: bool = True) -> tuple[str | None, pd.DataFrame]:
+    """Apply `steps` (in order) to parent runs and score/log the result as a new trial.
+
+    steps: [{"op": "combine", "weights": "equal"|"inv_mae"}, {"op": "clip"},
+            {"op": "calibrate", "method": "aci"|"oos_residual", ...}]
+    """
+    folds = folds or cv.folds()
+    requested = [dict(s) for s in steps]
+    want = ["mean"] + (["mean_w56", "mean_w364", "mean_w728", "mean_wall"]
+                       if any(s["op"] == "windows" for s in steps) else [])
+    df, extra_log = apply({p: load_run(p, want) for p in parents}, steps, panel, folds)
     config = {"postprocess": True, "parents": parents, "steps": requested,
               "folds": len(folds), "first_fold": folds[0].name, "last_fold": folds[-1].name}
     run_id = registry.start_run(name, json.loads(json.dumps(config, default=str)), len(df)) if log else None
