@@ -93,7 +93,8 @@ def score(df: pd.DataFrame, naive_mean: pd.Series | None = None) -> dict[str, fl
     out = {"n": len(df), "mae": mae(y, f), "rmse": rmse(y, f), "smape": smape(y, f), "tail_mae": tail_mae(y, f),
            "normal_mae": normal_mae(y, f)}
     if naive_mean is not None:
-        out["rmae"] = out["mae"] / mae(y, naive_mean.to_numpy(float))
+        denom = mae(y, naive_mean.to_numpy(float))
+        out["rmae"] = out["mae"] / denom if denom > 0 else float("nan")   # e.g. a zone with zero congestion all month
     if all(c in df for c in QCOLS):
         has_q = df[QCOLS].notna().all(axis=1).to_numpy()
         if has_q.any():
