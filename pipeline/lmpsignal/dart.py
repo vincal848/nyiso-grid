@@ -111,3 +111,62 @@ def lineage_holdout(signal: str) -> str | None:
         return None
     lin = json.loads(p.read_text())
     return lin.get(signal) if lin.get("candidate") == signal else None
+
+
+# ----------------------------------------------------------------------------- DART v2 (M4, declared 2026-10-05)
+
+def positions_v2(signal_run: str, spike_run: str, lags: pd.DataFrame | None = None) -> pd.DataFrame:
+    """DART v2: distribution means (q05..q95 average), RT mean mixed with the spike member, DA/RT residual correlation
+    over the 365 days before each month (as of the fold's training end). See docs/ROADMAP.md, M4 declaration."""
+    from lmpsignal.evaluate import QCOLS
+    from lmpsignal.live import month_fold
+
+    inner = QCOLS[1:-1]                                            # q05..q95
+    d = duckdb.sql(f"""SELECT delivery_date, ts_utc, zone, hour_local, market, mean, {', '.join(QCOLS)}, y
+                       FROM read_parquet('{(EXPERIMENTS_DIR / signal_run).as_posix()}/fold=*.parquet')
+                       WHERE component = 'total'""").df()
+    d = d[d["zone"].isin(INTERNAL_ZONES)]
+    d["dmean"] = d[inner].mean(axis=1)
+    d["sd"] = (d["q95"] - d["q05"]) / 3.29
+    w = d.pivot_table(index=["delivery_date", "ts_utc", "zone", "hour_local"], columns="market",
+                      values=["mean", "dmean", "sd", "y", "q05", "q95"]).reset_index()
+    w.columns = ["_".join(c).strip("_") for c in w.columns]
+    w = w.dropna(subset=["dmean_da", "dmean_rt", "y_da", "y_rt"])
+    sp = duckdb.sql(f"""SELECT ts_utc, zone, p_spike, mean AS spike_mean
+                        FROM read_parquet('{(EXPERIMENTS_DIR / spike_run).as_posix()}/fold=*.parquet')""").df()
+    w = w.merge(sp, on=["ts_utc", "zone"], how="left")
+    p = w["p_spike"].fillna(0.0)
+    w["m_rt"] = (1 - p) * w["dmean_rt"] + p * w["spike_mean"].fillna(w["dmean_rt"])
+    # residual correlation per zone, from the 365 days before each month's training end
+    w["delivery_date"] = pd.to_datetime(w["delivery_date"])
+    w["r_da"], w["r_rt"] = w["y_da"] - w["mean_da"], w["y_rt"] - w["mean_rt"]
+    w["month"] = w["delivery_date"].dt.to_period("M")
+    rho = []
+    for mon in w["month"].unique():
+        end = pd.Timestamp(month_fold(mon.to_timestamp().date()).train_end)
+        h = w[(w["delivery_date"] < end) & (w["delivery_date"] >= end - pd.Timedelta(days=365))]
+        c = h.groupby("zone").apply(lambda g: g["r_da"].corr(g["r_rt"]), include_groups=False)
+        rho.append(pd.DataFrame({"month": mon, "zone": c.index, "rho": c.to_numpy()}))
+    w = w.merge(pd.concat(rho, ignore_index=True), on=["month", "zone"], how="left")
+    w["rho"] = w["rho"].fillna(0.0)
+    s = w["dmean_da"] - w["m_rt"]
+    sig = np.sqrt((w["sd_da"] ** 2 + w["sd_rt"] ** 2 - 2 * w["rho"] * w["sd_da"] * w["sd_rt"]).clip(lower=1e-6))
+    w["x_signal_v2"] = np.where(np.abs(s) > COST, np.clip(s / sig, -1, 1), 0.0)
+    w["spread"] = w["y_da"] - w["y_rt"]
+    w["pnl_signal_v2"] = w["x_signal_v2"] * w["spread"] - COST * np.abs(w["x_signal_v2"])
+    # v1 rule and persistence on the same rows, for comparison
+    base = positions(w.rename(columns={"mean_da": "mean_da", "mean_rt": "mean_rt"})[
+        ["delivery_date", "ts_utc", "zone", "hour_local", "mean_da", "mean_rt", "q05_da", "q95_da", "q05_rt", "q95_rt",
+         "y_da", "y_rt"]], lags)
+    return w.merge(base[["ts_utc", "zone", "x_signal", "pnl_signal", "x_persistence", "pnl_persistence"]],
+                   on=["ts_utc", "zone"])
+
+
+def backtest_v2(signal_run: str, spike_run: str) -> pd.DataFrame:
+    w = positions_v2(signal_run, spike_run)
+    w = w.rename(columns={"x_signal": "x_signal_v1", "pnl_signal": "pnl_signal_v1"})
+    rows = []
+    for lab, g in (("validation", w), ("validation ex 2025-06-24", w[w["delivery_date"] != SPIKE_DAY])):
+        for k in ("signal_v2", "signal_v1", "persistence"):
+            rows.append({"period": lab, **_stats(g, k)})
+    return pd.DataFrame(rows)

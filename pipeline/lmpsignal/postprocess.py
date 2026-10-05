@@ -7,7 +7,7 @@ diagnostics count it. A step may only use information available at issue time:
 clip       Bound each forecast to [min, max] of its target (market, component, zone, local hour) over
            the delivery days before the fold's training end. Equivalent to LEAR's VST-space clip,
            because the asinh transform is monotone.
-combine    Weighted average of parents' point forecasts. 'equal', or 'inv_mae': weights proportional
+combine    Weighted average of parents' point forecasts ('median': their median, M4 robust combination). 'equal', or 'inv_mae': weights proportional
            to 1/MAE of each parent over earlier folds (delivery before the fold's training end,
            trailing 365 days), per (market, component).
 windows    For runs that stored per-variant outputs (LEAR v2: mean_w56, mean_w364, ...), set the point
@@ -87,6 +87,10 @@ def combine(parents: dict[str, pd.DataFrame], folds: list[cv.Fold], weights: str
         te = ((base["delivery_date"] >= pd.Timestamp(f.test_start)) & (base["delivery_date"] < pd.Timestamp(f.test_end))).to_numpy()
         for (m, c), idx in base[te].groupby(["market", "component"]).groups.items():
             rows = base.index.get_indexer(idx)
+            if weights == "median":
+                mean[rows] = np.nanmedian(M[rows], axis=1)
+                log.append({"fold": f.name, "market": m, "component": c, "rule": "median"})
+                continue
             if weights == "equal":
                 w = np.ones(len(names)) / len(names)
             else:

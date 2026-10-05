@@ -33,6 +33,11 @@ POST_PRESETS = {
     "v1_spike_mix": (["combo3_eq_aci", "spike_full"], [{"op": "spike_mix", "base": "combo3_eq_aci", "spike": "spike_full"}]),
     "v1_spike_mix_aci": (["combo3_eq_aci", "spike_full"], [{"op": "spike_mix", "base": "combo3_eq_aci", "spike": "spike_full"},
                                                            {"op": "calibrate", "method": "aci"}]),
+    # M4 declared candidates (docs/ROADMAP.md)
+    "combo3_med_aci": (["lear_clip", "gbm_l1", "persist_da_d1"], [{"op": "combine", "weights": "median"}, {"op": "clip"},
+                                                                 {"op": "calibrate", "method": "aci"}]),
+    "combo3_med_spike": (["combo3_med_aci", "spike_full"], [{"op": "spike_mix", "base": "combo3_med_aci",
+                                                              "spike": "spike_full"}]),
     "lear2_long_aci": (["lear2"], [{"op": "windows", "use": ["w364", "w728", "wall"]},
                                    {"op": "calibrate", "method": "aci"}]),
     "assemble_v1e_v2c_aci": (["lear_clip", "lear2"], [{"op": "assemble", "components": {
