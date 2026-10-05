@@ -82,3 +82,18 @@ metric the signal generalizes: CRPS 16% (DA) and 26% (RT) below yesterday's DA p
 validation. The weakness is the DA point forecast in shock months: DA RMSE is worse than persistence, driven by
 January 2026 (LEAR's DA MAE 140 $/MWh that month) and August 2026. Follow-ups are in `docs/RESEARCH_LOG.md`
 (tail handling, LEAR blow-up guard), to be picked up after the end-to-end build with a declared run budget.
+
+## Node layer (`lmp nodes`, scored once on validation 2026-10-05)
+
+Node forecast = signal energy + per-node OLS mapping of the zone's loss and congestion (365 days to month start − 7d).
+36 validation folds, ~16M node-hours per market (`data/experiments/nodes_v1_validation.csv`):
+
+| | DA MAE | DA RMSE | RT MAE | RT RMSE |
+|---|---|---|---|---|
+| node mapping | **7.00** | **17.16** | 14.80 | 60.65 |
+| zone forecast used at every node | 7.02 | 17.44 | **14.76** | 60.98 |
+| node's own DA price of D−1 | 8.70 | 20.11 | 16.36 | **59.75** |
+
+The mapping beats node persistence on MAE but adds little over the zone forecast: within-zone congestion that moves
+nodes differently is not captured from a zone-level congestion forecast. Route: structural node shift factors
+(`docs/RESEARCH_LOG.md`).
