@@ -89,3 +89,22 @@ def test_median_combination_ignores_one_blown_up_member():
     parents = {n: pd.DataFrame([{**k, "mean": v}]) for n, v in (("a", 48.0), ("b", 900.0), ("c", 52.0))}
     out, _ = postprocess.combine(parents, [f], "median")
     assert out["mean"].iloc[0] == 52.0
+
+
+def test_dart_v2_position_uses_correlation_and_cost_band():
+    s, sig, x = dart.v2_position([50.0, 50.0, 50.3], [45.0, 45.0, 50.0], [10.0, 10.0, 10.0], [10.0, 10.0, 10.0],
+                                 [0.0, 0.9, 0.0])
+    assert np.allclose(s, [5.0, 5.0, 0.3])
+    assert np.isclose(sig[0], np.sqrt(200)) and np.isclose(sig[1], np.sqrt(20))   # correlated errors shrink the scale
+    assert np.isclose(x[0], 5 / np.sqrt(200)) and x[1] == 1.0                     # ... so the position grows, capped at 1
+    assert x[2] == 0.0                                                            # inside the cost band: no trade
+
+
+def test_dart_v2_rho_uses_only_the_prior_year():
+    days = pd.date_range("2024-01-01", "2025-12-31", freq="D")
+    r = np.random.default_rng(0).normal(size=len(days))
+    resid = pd.DataFrame({"delivery_date": days, "zone": "WEST", "r_da": r,
+                          "r_rt": np.where(days < "2025-01-01", r, -r)})                # sign flips in 2025
+    assert np.isclose(dart._rho(resid, pd.Timestamp("2025-01-01"))["WEST"], 1.0)
+    assert np.isclose(dart._rho(resid, pd.Timestamp("2026-01-01"))["WEST"], -1.0)
+    assert dart._rho(resid, pd.Timestamp("2023-06-01")).empty

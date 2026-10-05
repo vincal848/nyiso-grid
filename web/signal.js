@@ -165,7 +165,7 @@ async function liveInit() {
   $("#live-zone").innerHTML = INTERNAL.map((z) => `<option ${z === "N.Y.C." ? "selected" : ""}>${z}</option>`).join("");
   const dates = await api("/api/live/dates").catch(() => []);
   $("#live-date").innerHTML = dates.map((r) => `<option>${r.delivery_date}</option>`).join("");
-  ["live-date", "live-zone", "live-comp"].forEach((id) => ($("#" + id).onchange = () => { drawLive(); drawLiveNodes(); }));
+  ["live-date", "live-zone", "live-comp"].forEach((id) => ($("#" + id).onchange = () => { drawLive(); drawLiveNodes(); drawDart(); }));
 }
 
 async function drawLive() {
@@ -220,9 +220,29 @@ async function drawLiveNodes() {
     `<tr><td>${r.name}</td><td>${r.zone}</td><td class="num">${num(r.total, 2)}</td><td class="num">${num(r.congestion, 2)}</td></tr>`).join("");
 }
 
+async function drawDart() {
+  const date = $("#live-date").value;
+  const d = await api(`/api/live/dart${date ? `?date=${date}` : ""}`).catch(() => ({ zones: [] }));
+  $("#dart-title").textContent = `RT spike risk and DART v2 paper positions${d.date ? `, ${d.date}` : ""}`;
+  $("#t-dart tbody").innerHTML = d.zones.map((r) =>
+    `<tr><td>${r.zone}</td><td class="num">${num(r.p_spike_max, 2)}</td><td class="num">${r.p_spike_hour ?? "–"}</td>` +
+    `<td class="num">${num(r.net_mwh, 1)}</td><td class="num">${num(r.spread_fcst, 2)}</td>` +
+    `<td class="num">${r.settled_hours ? num(r.spread_actual, 2) : "–"}</td>` +
+    `<td class="num">${r.settled_hours === r.hours ? num(r.pnl, 0) : "–"}</td></tr>`).join("");
+  const rows = await api("/api/live/paper").catch(() => []);
+  if (!rows.length) { chart("c-paper").clear(); return; }
+  chart("c-paper").setOption(base({
+    tooltip: { ...base().tooltip, valueFormatter: (v) => (v == null ? "–" : `$${num(v, 0)}`) },
+    legend: { ...base().legend, data: ["Daily P&L", "Cumulative"] },
+    xAxis: { ...base().xAxis, data: rows.map((r) => r.delivery_date) },
+    series: [{ name: "Daily P&L", type: "bar", data: rows.map((r) => r.pnl), itemStyle: { color: css("--s1") } },
+             line("Cumulative", rows.map((r) => r.cum_pnl), css("--s2"))],
+  }), true);
+}
+
 window.renderSignal = async function (date) {
   await liveInit();
-  await Promise.all([drawLive().catch(() => {}), drawTrack().catch(() => {}), drawLiveNodes().catch(() => {})]);
+  await Promise.all([drawLive().catch(() => {}), drawTrack().catch(() => {}), drawLiveNodes().catch(() => {}), drawDart().catch(() => {})]);
   await sigInit();
   if (!$("#t-sig tbody").children.length) await loadStructure().catch(() => {});
   await drawFan(date).catch(() => {});

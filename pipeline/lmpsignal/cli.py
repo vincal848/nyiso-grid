@@ -247,6 +247,53 @@ def nodes(day: str = typer.Option(None, "--date", help="Delivery day for the liv
     typer.echo(f"nodes {d}: {out['ptid'].nunique()} nodes, {len(out):,} rows ({time.time() - t:.0f}s)")
 
 
+def _day(day: str | None):
+    from datetime import date, datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    return date.fromisoformat(day) if day else datetime.now(ZoneInfo("America/New_York")).date() + timedelta(days=1)
+
+
+@app.command()
+def risk(day: str = typer.Option(None, "--date", help="Delivery day (default: tomorrow)")):
+    """Live RT spike risk (M3b spike member, not part of signal v1) -> experiments.duckdb live_spike."""
+    import time
+
+    from lmpsignal import live
+
+    t, d = time.time(), _day(day)
+    out = live.spike_forecast(d)
+    top = out.groupby("zone")["p_spike"].max().sort_values(ascending=False)
+    typer.echo(f"risk {d}: max P(spike) " + ", ".join(f"{z} {v:.2f}" for z, v in top.head(4).items())
+               + f"  ({time.time() - t:.0f}s)")
+
+
+@app.command()
+def positions(day: str = typer.Option(None, "--date", help="Delivery day (default: tomorrow)")):
+    """DART v2 paper positions for one delivery day (needs `lmp forecast` and `lmp risk`) -> live_dart."""
+    from lmpsignal import dart as dt
+
+    d = _day(day)
+    out = dt.live_v2(d)
+    by = out.groupby("zone")["x_mw"].sum().round(1)
+    typer.echo(f"positions {d}: {(out['x_mw'] != 0).sum()} zone-hours, net MWh (+ INC / - DEC) by zone: "
+               + ", ".join(f"{z} {v:+.1f}" for z, v in by.items()))
+
+
+@app.command()
+def paper():
+    """Paper-trading track record of the live DART v2 positions (settled days only)."""
+    from lmpsignal import dart as dt
+
+    g = dt.paper()
+    if g.empty:
+        typer.echo("no settled paper positions yet")
+        return
+    typer.echo(g.round(2).to_string(index=False))
+    typer.echo(f"total {g['pnl'].sum():,.2f} $ over {len(g)} days, {g['mwh'].sum():,.1f} MWh "
+               f"({g['pnl'].sum() / g['mwh'].sum():.2f} $/MWh)" if g["mwh"].sum() else "")
+
+
 @app.command()
 def dart(rule: str = typer.Option("v1", help="v1 (prototype) or v2 (M4: distribution means, spike mix, DA/RT correlation)")):
     """DART prototype: backtest zonal virtual positions from the signal on validation and (if run) the M7 holdout."""

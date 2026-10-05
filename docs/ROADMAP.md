@@ -164,6 +164,9 @@ residuals: now 0), not to a signal re-run.
   +$258k without 2025-06-24. Same rows: DART v1 −$30k, persistence −$16k. Hit rate is 48%, so gains come from size,
   not frequency; the top 1% of days carry 80% of P&L. The holdout is spent, so this has **no out-of-sample
   confirmation**: it goes into paper trading on the live forecasts before any capital (research log).
+- Paper trading started 2026-10-05 (first delivery day 2026-10-06): the daily job runs the spike member live
+  (`lmp risk` -> `live_spike`) and writes DART v2 positions (`lmp positions` -> `live_dart`); track record via
+  `lmp paper` and the dashboard's Signal tab. The rule stays frozen while the record accumulates.
 
 ## M4: probabilistic combination (evidence: strong for DA, European)
 QRA / LQRA over the member pool + isotonic distributional regression + conformal ensemble; EVT (GPD)

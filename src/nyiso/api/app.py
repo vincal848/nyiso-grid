@@ -324,14 +324,14 @@ def signal_forecast(run_id: str, zone: str, date_: str = Query(..., alias="date"
 
 # ------------------------------------------------------------------ live signal (lmp forecast / lmp nodes)
 
-def _lq(sql: str, params: list | None = None) -> list[dict]:
-    """Read-only query over experiments.duckdb (live tables) with the warehouse attached as `wh`."""
+def _lq(sql: str, params: list | None = None, table: str = "live_forecasts") -> list[dict]:
+    """Read-only query over experiments.duckdb (live tables) with the warehouse attached as `wh`; [] if `table` is absent."""
     if not EXPERIMENTS_DB.exists():
         return []
     con = duckdb.connect(str(EXPERIMENTS_DB), read_only=True)
     try:
         con.execute("SET TimeZone = 'UTC'")
-        if not con.execute("SELECT count(*) FROM duckdb_tables() WHERE table_name = 'live_forecasts'").fetchone()[0]:
+        if not con.execute("SELECT count(*) FROM duckdb_tables() WHERE table_name = ?", [table]).fetchone()[0]:
             return []
         con.execute(f"ATTACH '{DB_PATH.as_posix()}' AS wh (READ_ONLY)")
         res = con.execute(sql, params or [])
@@ -393,6 +393,40 @@ def live_nodes(date_: str | None = Query(None, alias="date"), market: str = "da"
                   WHERE n.delivery_date = ? AND n.market = ? AND m.lat IS NOT NULL
                   GROUP BY ALL""", [str(d), market])
     return js({"date": str(d), "market": market, "nodes": rows})
+
+
+@app.get("/api/live/dart")
+def live_dart(date_: str | None = Query(None, alias="date")):
+    """Per zone for one delivery day: peak RT spike probability, DART v2 paper position and (once settled) P&L."""
+    d = date_ or (_lq("SELECT max(delivery_date) AS d FROM live_dart", table="live_dart") or [{"d": None}])[0]["d"]
+    if d is None:
+        return js({"date": None, "zones": []})
+    rows = _lq("""SELECT x.zone, max(x.p_spike) AS p_spike_max, arg_max(x.hour_local, x.p_spike) AS p_spike_hour,
+                         sum(x.x_mw) AS net_mwh, sum(abs(x.x_mw)) AS gross_mwh, avg(x.spread_fcst) AS spread_fcst,
+                         avg(z.da_lbmp - z.rt_lbmp) AS spread_actual,
+                         sum(CASE WHEN z.rt_lbmp IS NOT NULL AND z.da_lbmp IS NOT NULL
+                                  THEN x.x_mw * (z.da_lbmp - z.rt_lbmp) - 0.5 * abs(x.x_mw) END) AS pnl,
+                         count(z.rt_lbmp) AS settled_hours, count(*) AS hours
+                  FROM live_dart x LEFT JOIN wh.lbmp_zone_hourly z ON z.zone = x.zone AND z.ts_utc = x.ts_utc
+                  WHERE x.rule = 'v2' AND x.delivery_date = ? GROUP BY ALL ORDER BY x.zone""", [str(d)], table="live_dart")
+    return js({"date": str(d), "zones": rows})
+
+
+@app.get("/api/live/paper")
+def live_paper():
+    """Daily paper P&L of the live DART v2 positions over fully settled days ($, 1 MW limit per zone-hour, $0.50/MWh cost)."""
+    rows = _lq("""WITH r AS (
+                    SELECT x.delivery_date, abs(x.x_mw) AS mwh,
+                           x.x_mw * (z.da_lbmp - z.rt_lbmp) - 0.5 * abs(x.x_mw) AS pnl
+                    FROM live_dart x LEFT JOIN wh.lbmp_zone_hourly z ON z.zone = x.zone AND z.ts_utc = x.ts_utc
+                    WHERE x.rule = 'v2')
+                  SELECT delivery_date, sum(mwh) AS mwh, sum(pnl) AS pnl FROM r
+                  GROUP BY delivery_date HAVING count(pnl) = count(*) ORDER BY delivery_date""", table="live_dart")
+    run = 0.0
+    for r in rows:
+        run += r["pnl"] or 0.0
+        r["cum_pnl"] = run
+    return js(rows)
 
 
 # ------------------------------------------------------------------ static

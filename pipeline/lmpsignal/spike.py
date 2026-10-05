@@ -153,6 +153,21 @@ def _scores(o: pd.DataFrame, clim: pd.Series) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def fold_data(base: pd.DataFrame, f: cv.Fold) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
+    """Training rows, test rows and per-zone thresholds for one fold (thresholds from the fold's training data)."""
+    in_train = (base["delivery_date"] >= pd.Timestamp(f.train_start)) & (base["delivery_date"] < pd.Timestamp(f.train_end))
+    recent = in_train & (base["delivery_date"] >= pd.Timestamp(f.train_end) - pd.Timedelta(days=THRESH_DAYS))
+    thr = base[recent].groupby("zone")["rt_total"].quantile(THRESH_Q)
+    daily, sh = _history_features(base[base["delivery_date"] < pd.Timestamp(f.test_end)], thr)
+    d = (base.drop(columns=[c for c in ("spike_decay", "spike_freq7", "spike_d2_h") if c in base])
+         .merge(daily, on=["zone", "delivery_date"], how="left")
+         .merge(sh, on=["zone", "delivery_date", "hour_local"], how="left"))
+    d["spike"] = (d["rt_total"] >= d["zone"].map(thr)).astype(int)
+    tr = d[in_train.to_numpy() & d["rt_total"].notna().to_numpy()]
+    te = d[(d["delivery_date"] >= pd.Timestamp(f.test_start)) & (d["delivery_date"] < pd.Timestamp(f.test_end))]
+    return tr, te, thr
+
+
 def run(variant: str, p: pd.DataFrame, folds: list[cv.Fold] | None = None, log: bool = True) -> str | None:
     warnings.filterwarnings("ignore")
     member = SpikeMember(variant)
@@ -163,16 +178,7 @@ def run(variant: str, p: pd.DataFrame, folds: list[cv.Fold] | None = None, log: 
     try:
         for f in folds:
             t0 = time.time()
-            in_train = (base["delivery_date"] >= pd.Timestamp(f.train_start)) & (base["delivery_date"] < pd.Timestamp(f.train_end))
-            recent = in_train & (base["delivery_date"] >= pd.Timestamp(f.train_end) - pd.Timedelta(days=THRESH_DAYS))
-            thr = base[recent].groupby("zone")["rt_total"].quantile(THRESH_Q)
-            daily, sh = _history_features(base[base["delivery_date"] < pd.Timestamp(f.test_end)], thr)
-            d = (base.drop(columns=[c for c in ("spike_decay", "spike_freq7", "spike_d2_h") if c in base])
-                 .merge(daily, on=["zone", "delivery_date"], how="left")
-                 .merge(sh, on=["zone", "delivery_date", "hour_local"], how="left"))
-            d["spike"] = (d["rt_total"] >= d["zone"].map(thr)).astype(int)
-            tr = d[in_train.to_numpy() & d["rt_total"].notna().to_numpy()]
-            te = d[(d["delivery_date"] >= pd.Timestamp(f.test_start)) & (d["delivery_date"] < pd.Timestamp(f.test_end))]
+            tr, te, thr = fold_data(base, f)
             member.fit(tr, thr)
             o = member.predict(te)
             clim = tr.groupby("zone")["spike"].mean()
