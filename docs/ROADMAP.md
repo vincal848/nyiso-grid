@@ -300,7 +300,7 @@ Without 2025-06-24 the picture is the same; PBO over the four = 0.003. No candid
   computed**; the clean test is forecasts issued live, before the outcome exists.
 - **Member** `chronos2`: Chronos-2 (`amazon/chronos-2`, Apache-2.0), zero-shot, no fine-tuning. Per location (15)
   and market, the target is the hourly total price in UTC hours. Context: the last 28 days known at issue (DA through
-  D−1; RT through the last hour ending at or before 05:00 ET D−1). Covariates: zone load forecast and temperature
+  D−1; RT through the hour ending 04:00 ET D−1, one hour before the issue, since the 04–05 hour may be unpublished). Covariates: zone load forecast and temperature
   forecast (panel values, past and future). Forecast: the 21 signal quantiles for D's hours (RT includes the gap
   hours between issue and D, which are dropped). Mean = average of the q05..q95 quantiles.
 - **Output**: `live_shadow` in experiments.duckdb, beside `live_forecasts`; daily job step `lmp shadow`; it never

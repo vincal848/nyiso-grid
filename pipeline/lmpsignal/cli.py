@@ -275,6 +275,25 @@ def risk(day: str = typer.Option(None, "--date", help="Delivery day (default: to
 
 
 @app.command()
+def shadow(day: str = typer.Option(None, "--date", help="Delivery day (default: tomorrow)"),
+           score: bool = typer.Option(False, help="Print the live record vs signal v1 instead of forecasting")):
+    """M8 live shadow member (Chronos-2, zero-shot) -> live_shadow; never feeds the signal. Needs the `deep` extra."""
+    import time
+
+    from lmpsignal import shadow as sh
+
+    if score:
+        s = sh.score()
+        typer.echo("no settled shadow forecasts yet" if s.empty else s.round(3).to_string(index=False))
+        return
+    t, d = time.time(), _day(day)
+    out = sh.forecast(d)
+    m = out.groupby("market")["mean"].mean()
+    typer.echo(f"shadow {d}: {len(out):,} rows; mean total DA {m.get('da', float('nan')):.2f}, RT {m.get('rt', float('nan')):.2f} "
+               f"({time.time() - t:.0f}s)")
+
+
+@app.command()
 def positions(day: str = typer.Option(None, "--date", help="Delivery day (default: tomorrow)")):
     """DART v2 paper positions for one delivery day (needs `lmp forecast` and `lmp risk`) -> live_dart."""
     from lmpsignal import dart as dt
