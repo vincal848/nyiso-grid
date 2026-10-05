@@ -14,6 +14,10 @@ windows    For runs that stored per-variant outputs (LEAR v2: mean_w56, mean_w36
            forecast to the average of the chosen variants.
 assemble   Build a forecast from components of different parents: energy, loss and congestion each
            come from a named parent run, and total = energy + loss + congestion.
+spike_mix  (M3b) Mix the RT total forecast of a base parent with a spike member's spike-conditional distribution:
+           F = (1 - p) * F_base + p * F_spike, mean = (1 - p) * mean_base + p * mean_spike, p = P(spike) for the
+           zone-hour. Mixture quantiles by weighted resampling of both quantile functions (100 points each). Other
+           markets / components and zones without a spike forecast are passed through unchanged.
 calibrate  Quantiles around the point forecast.
            'oos_residual': static per-fold empirical residual quantiles (as in runner.run).
            'aci': adaptive conformal inference (Gibbs & Candès 2021). For every (market, component,
@@ -133,6 +137,31 @@ def assemble(parents: dict[str, pd.DataFrame], mapping: dict[str, str]) -> pd.Da
     return out[KEYS + ["mean", "y", "scored", "ref_mean"]]
 
 
+def spike_mix(base: pd.DataFrame, spike: pd.DataFrame, n: int = 100) -> pd.DataFrame:
+    """See module docstring. `base` needs mean + QCOLS; `spike` needs mean, QCOLS, p_spike (rt / total rows)."""
+    qs = np.asarray(QUANTILES)
+    u = (np.arange(n) + 0.5) / n
+    k = ["ts_utc", "zone", "market", "component"]
+    sp = spike[spike["market"].eq("rt") & spike["component"].eq("total")][k + ["mean", "p_spike", *QCOLS]]
+    m = base.merge(sp, on=k, how="left", suffixes=("", "_s"))
+    hit = (m["p_spike"].notna() & m[QCOLS].notna().all(axis=1) & m[[f"{c}_s" for c in QCOLS]].notna().all(axis=1)).to_numpy()
+    if hit.any():
+        Qb = m.loc[hit, QCOLS].to_numpy(float)
+        Qs = m.loc[hit, [f"{c}_s" for c in QCOLS]].to_numpy(float)
+        p = m.loc[hit, "p_spike"].to_numpy(float)
+        sb = np.stack([np.interp(u, qs, row) for row in Qb])          # base quantile function on a uniform grid
+        ss = np.stack([np.interp(u, qs, row) for row in Qs])
+        vals = np.concatenate([sb, ss], axis=1)
+        w = np.concatenate([np.repeat((1 - p)[:, None] / n, n, axis=1), np.repeat(p[:, None] / n, n, axis=1)], axis=1)
+        order = np.argsort(vals, axis=1)
+        v = np.take_along_axis(vals, order, axis=1)
+        cw = np.cumsum(np.take_along_axis(w, order, axis=1), axis=1)
+        idx = np.stack([np.searchsorted(row, qs) for row in cw]).clip(max=v.shape[1] - 1)
+        m.loc[hit, QCOLS] = np.take_along_axis(v, idx, axis=1)
+        m.loc[hit, "mean"] = (1 - p) * m.loc[hit, "mean"].to_numpy(float) + p * m.loc[hit, "mean_s"].to_numpy(float)
+    return m[base.columns]
+
+
 def calibrate_oos_residual(df: pd.DataFrame, folds: list[cv.Fold], lookback_days: int = 365) -> pd.DataFrame:
     from lmpsignal.runner import _oos_quantiles
 
@@ -198,7 +227,10 @@ def apply(loaded: dict[str, pd.DataFrame], steps: list[dict], panel: pd.DataFram
     Used by `run` (logged trials) and by the daily live forecast (lmpsignal/live.py)."""
     parents = list(loaded)
     extra_log: list[dict] = []
-    if steps and steps[0]["op"] == "assemble":
+    if steps and steps[0]["op"] == "spike_mix":
+        df = spike_mix(loaded[steps[0]["base"]], loaded[steps[0]["spike"]])
+        steps = steps[1:]
+    elif steps and steps[0]["op"] == "assemble":
         df = assemble(loaded, steps[0]["components"])
         steps = steps[1:]
     elif steps and steps[0]["op"] == "combine":
@@ -236,7 +268,7 @@ def run(name: str, parents: list[str], steps: list[dict], panel: pd.DataFrame | 
     folds = folds or cv.folds()
     requested = [dict(s) for s in steps]
     want = ["mean"] + (["mean_w56", "mean_w364", "mean_w728", "mean_wall"]
-                       if any(s["op"] == "windows" for s in steps) else [])
+                       if any(s["op"] == "windows" for s in steps) else [])         + ([*QCOLS, "p_spike"] if any(s["op"] == "spike_mix" for s in steps) else [])
     df, extra_log = apply({p: load_run(p, want) for p in parents}, steps, panel, folds)
     config = {"postprocess": True, "parents": parents, "steps": requested,
               "folds": len(folds), "first_fold": folds[0].name, "last_fold": folds[-1].name}

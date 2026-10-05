@@ -29,6 +29,10 @@ POST_PRESETS = {
     "assemble_v1_final": (["combo3_eq_aci", "lear2_long_aci"], [{"op": "assemble", "components": {
         "energy": "combo3_eq_aci", "loss": "combo3_eq_aci", "congestion": "lear2_long_aci"}},
         {"op": "calibrate", "method": "aci"}]),
+    # M3b declared post variants (docs/ROADMAP.md): signal v1's RT total mixed with the spike member
+    "v1_spike_mix": (["combo3_eq_aci", "spike_full"], [{"op": "spike_mix", "base": "combo3_eq_aci", "spike": "spike_full"}]),
+    "v1_spike_mix_aci": (["combo3_eq_aci", "spike_full"], [{"op": "spike_mix", "base": "combo3_eq_aci", "spike": "spike_full"},
+                                                           {"op": "calibrate", "method": "aci"}]),
     "lear2_long_aci": (["lear2"], [{"op": "windows", "use": ["w364", "w728", "wall"]},
                                    {"op": "calibrate", "method": "aci"}]),
     "assemble_v1e_v2c_aci": (["lear_clip", "lear2"], [{"op": "assemble", "components": {

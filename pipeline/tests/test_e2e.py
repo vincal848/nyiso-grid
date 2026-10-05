@@ -49,3 +49,21 @@ def test_dart_positions_size_by_spread_over_uncertainty_and_net_costs():
     assert out.loc["N.Y.C.", "x_signal"] == 0                                         # |spread| <= cost: no trade
     assert out.loc["CAPITL", "x_signal"] == -1                                        # strong DEC, capped
     assert np.isclose(out.loc["CAPITL", "pnl_signal"], -1 * (55 - 80) - dart.COST)
+
+
+def test_spike_mix_moves_mean_and_upper_tail_by_the_spike_probability():
+    from lmpsignal import postprocess
+    from lmpsignal.config import QUANTILES
+    from lmpsignal.evaluate import QCOLS
+
+    ts = pd.Timestamp("2024-07-01 20:00", tz="UTC")
+    k = {"delivery_date": pd.Timestamp("2024-07-01"), "ts_utc": ts, "zone": "N.Y.C.", "hour_local": 16,
+         "market": "rt", "component": "total", "y": 50.0, "scored": True, "ref_mean": np.nan}
+    qs = np.asarray(QUANTILES)
+    base = pd.DataFrame([{**k, "mean": 50.0, **dict(zip(QCOLS, 40 + 20 * qs))}])
+    spike = pd.DataFrame([{**k, "mean": 300.0, "p_spike": 0.1, **dict(zip(QCOLS, 200 + 200 * qs))}])
+    out = postprocess.spike_mix(base, spike)
+    assert np.isclose(out["mean"].iloc[0], 0.9 * 50 + 0.1 * 300)
+    assert out["q50"].iloc[0] < 60 and out["q95"].iloc[0] > 200        # median stays in the base, top 5% in the spike
+    zero = postprocess.spike_mix(base, spike.assign(p_spike=0.0))
+    assert np.allclose(zero[QCOLS].to_numpy(), base[QCOLS].to_numpy(), atol=0.5)

@@ -126,7 +126,8 @@ def post(name: str = typer.Argument(..., help=f"Preset: {', '.join(POST_PRESETS)
     if missing:
         raise typer.BadParameter(f"no completed run for {missing}")
     p = panel.load(end=VALIDATION_END) if any(s["op"] == "clip" for s in steps) else None
-    steps = [dict(s, components={k: runs[v] for k, v in s["components"].items()}) if s["op"] == "assemble" else s
+    steps = [dict(s, components={k: runs[v] for k, v in s["components"].items()}) if s["op"] == "assemble"
+             else dict(s, base=runs[s["base"]], spike=runs[s["spike"]]) if s["op"] == "spike_mix" else s
              for s in steps]
     rid, weights = postprocess.run(name, [runs[m] for m in models], steps, panel=p)
     typer.echo(f"{name} -> {rid} in {time.time() - t:.0f}s (parents: {', '.join(runs[m] for m in models)})")
@@ -186,6 +187,21 @@ def m7(candidate: str = typer.Argument(..., help="The frozen signal v1 (a model 
     (registry.EXPERIMENTS_DIR / "m7_lineage.json").write_text(json.dumps({"candidate": candidate, **resolved}, indent=1))
     typer.echo(f"M7 {candidate} -> {final}; benchmarks {resolved['persist_da_d1']}, {resolved['lago_naive']} "
                f"in {time.time() - t:.0f}s")
+
+
+@app.command()
+def spike(variant: str = typer.Argument("full", help="full | no_storm (declared M3b variants)"),
+          smoke: int = typer.Option(0, help="Run only the first N folds WITHOUT logging (not a trial)")):
+    """M3b RT spike member over the validation folds (budget: 3 full runs, see docs/ROADMAP.md)."""
+    import time
+
+    from lmpsignal import cv, panel, spike as sp
+    from lmpsignal.config import VALIDATION_END
+
+    t = time.time()
+    p = panel.load(end=VALIDATION_END)
+    rid = sp.run(variant, p, folds=cv.folds()[:smoke] if smoke else None, log=not smoke)
+    typer.echo(f"spike_{variant} -> {rid or '(smoke test, not logged)'} in {time.time() - t:.0f}s")
 
 
 @app.command()
