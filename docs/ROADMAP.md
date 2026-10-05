@@ -63,6 +63,24 @@ them from the registry, take seconds, and are logged as their own trials with pa
    outcomes known at issue time, replacing static residual quantiles.
 5. **Evaluation**: spike-hour vs normal-hour splits; Kupiec / Christoffersen coverage tests.
 
+## Training protocol (agreed 2026-10-05)
+Training is bounded: a fixed start and end per phase, not open-ended variant-and-retrain.
+
+1. **Signal v1 candidate pool is closed** after the queued runs of 2026-10-05 (`gbm_l1_v3`, `lear_wx` and the
+   post presets `gbm_l1_v3_aci`, `lear_wx_clip`, `lear_wx_clip_aci`, `combo3wx_eq_aci`). No new model families,
+   feature variants or full retrains for v1.
+2. **One extra post-processing candidate**, declared now: `assemble_v1_final`: congestion from `lear2_long_aci`,
+   energy and loss from the better (by pooled total CRPS) of `combo3wx_eq_aci` / `combo3_eq_aci`, then ACI.
+3. **Selection rule** (fixed before the final scoreboard is read): lowest total-price CRPS averaged over DA and RT
+   on the 36 folds, subject to (a) Holm-adjusted DM p < 0.05 vs `persist_da_d1` on CRPS in both markets and
+   (b) PBO < 0.5. Within 1% CRPS the simpler candidate wins. DSR / SPA are reported, not used.
+4. **Freeze and evaluate once (M7):** record the winner's config and git commit as signal v1, unlock the holdout,
+   run the frozen configuration on 2025-10..2026-09, report whatever comes out. Training for this phase ends.
+5. **Later model milestones** (M3b, M4, M6, ...) declare their candidate list and a maximum number of full runs
+   (default 3) before starting; smoke tests do not count. When the budget is spent, the milestone stops.
+
+Ideas that come up meanwhile go to `docs/RESEARCH_LOG.md`, not into another retrain.
+
 ## M3: structural congestion (evidence: strong theory, no published real-ISO horse race)
 Per-constraint hurdle model for the top 50–100 constraints: P(bind) (regularized logistic / GBM) ×
 shadow price given binding (quantile model), mapped to nodes through pooled reduced-rank shift

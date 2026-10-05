@@ -45,9 +45,13 @@
 - Every model run goes through `runner.run` so it lands in the registry; compare models with `lmp report`.
   Never delete runs: every configuration tried counts toward the Deflated Sharpe Ratio's trial number.
   Each run logs config hash, code fingerprint, git commit, panel-data fingerprint, environment and duration.
+- Training is bounded by the protocol in `docs/ROADMAP.md` ("Training protocol"): signal v1's candidate pool is
+  closed; later model milestones declare a candidate list and a full-run budget (default 3) before starting.
+  Do not start new variants or retrains outside a declared budget; log the idea in `docs/RESEARCH_LOG.md`.
 - `lmp report` includes overfitting diagnostics (PSR, DSR, MinTRL, Holm/BHY-adjusted DM, SPA/Reality Check,
   PBO via CSCV) computed on daily forecast skill vs benchmarks. They are descriptive: no model is accepted or
-  rejected on them until an explicit selection rule is agreed.
+  rejected on them except through the selection rule in `docs/ROADMAP.md` (lowest pooled total CRPS, gated by
+  Holm-adjusted DM vs `persist_da_d1` and PBO < 0.5; DSR/SPA reported only).
 
 ## Commands
 - `uv run nyiso backfill [--datasets a,b] [--start 2021-10] [--end 2026-09]`
