@@ -177,6 +177,37 @@ error correlation (for DART later).
 Fuel × heat-rate bid-stack anchor (EIA-923 / CEMS heat rates, calibrated to 3-month-lagged masked
 offers), seasonal norms and decay curves per component, monthly congestion from the M3 structure.
 
+### M5 declaration (2026-10-05, before any M5 run)
+- **Targets** (monthly products, the inputs for monthly / capability-period TCC and forward valuation): per internal
+  zone and month, the average **DA total LBMP** and average **DA congestion** (−mcc, positive = congestion raises the
+  price) over **on-peak** hours (Mon–Fri except NERC holidays, HE08–HE23) and **off-peak** hours (all others).
+  RT monthly averages, hourly shapes, nodes and TCC path values are out of scope (research log).
+- **Issue rule, horizons h = 1..6**: for target month M at horizon h, data cutoff = first day of month M − (h − 1)
+  months, minus 7 days (the daily folds' training end, moved back h − 1 months). Prices with delivery date < cutoff.
+  Gas = mean Henry Hub spot of the last 10 trade days with trade date ≤ cutoff − 7 days (EIA posts weekly).
+- **History**: DA zonal LBMP backfilled to 2015-01 (warehouse only; the daily panel still starts 2021-10, so signal v1
+  is unaffected). Forecasts are made for every target month from 2016-01 so each model has its own past errors.
+- **Distributions** (same for every model): total in logs, congestion in levels. Quantiles = point forecast combined
+  with the empirical quantiles of that model's past errors at the same horizon and zone (errors of target months fully
+  known at the cutoff, pooled over on/off-peak; pooled over zones while fewer than 24). Mean = point forecast
+  corrected by the mean past error (it is the forecast scored by RMSE).
+- **Baselines** (benchmarks, not budgeted): `m5_persist` (last full month before the cutoff), `m5_lastyear` (same
+  month a year earlier), `m5_norm` (mean of the same calendar month over all earlier years).
+- **Candidates, budget 3 full runs**: (1) `m5_anchor`: total = implied heat rate × gas, heat rate = median of
+  (monthly price ÷ monthly Henry Hub) for the zone, calendar month and period over the last 5 years; congestion =
+  median of the same calendar month over the last 5 years. (2) `m5_decay`: anchor + decaying recent deviation per
+  component, log total = log anchor + φ_h · (log of the last full month's price ÷ its anchor at realized gas),
+  congestion = norm + ψ_h · (last full month − its norm), with φ_h, ψ_h ∈ [0, 1] per horizon fit by least squares on
+  earlier target months only. (3) reserved for one bug-fix re-run. The EIA-923/CEMS bid stack, masked offers and
+  M3-structure congestion are not attempted (no data ingested or no gain in M3; research log).
+- **Validation**: target months 2022-10..2025-09 (36), all six horizons. Scores: CRPS (primary) and RMSE, pooled over
+  zones, periods and horizons, also by horizon. DM tests on the per-target-month mean loss (36 observations).
+- **Adoption, per target** (total, congestion): the candidate with the lowest pooled CRPS is the M5 forecast if it
+  beats **every** baseline with Holm-adjusted DM p < 0.05 (Holm over its three comparisons); otherwise the M5
+  forecast is the baseline with the lowest pooled CRPS.
+- **Then one run on target months 2025-10..2026-09** for the adopted models and the baselines, reported as a check on
+  an already-seen period (the M7 holdout year: not used for fitting, but its daily prices have been looked at).
+
 ## M6: deep and graph models (ensemble members, not replacements)
 Feed-forward DNN / NBEATSx ensemble (4+ runs), distributional DNN (Johnson SU); TabPFN-TS or
 Chronos-2 with covariates as one ensemble member (check pretraining contamination). TFT and
