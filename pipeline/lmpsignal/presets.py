@@ -42,6 +42,12 @@ POST_PRESETS = {
                                    {"op": "calibrate", "method": "aci"}]),
     "assemble_v1e_v2c_aci": (["lear_clip", "lear2"], [{"op": "assemble", "components": {
         "energy": "lear_clip", "loss": "lear_clip", "congestion": "lear2"}}, {"op": "calibrate", "method": "aci"}]),
+    # M6 declared presets (docs/ROADMAP.md); ddnn* = ddnn (pooled total CRPS 8.559 vs 10.942 for ddnn_v3)
+    "ddnn_aci": (["ddnn"], [{"op": "calibrate", "method": "aci"}]),
+    "combo4_eq_aci": (["lear_clip", "gbm_l1", "ddnn"], [{"op": "combine", "weights": "equal"}, {"op": "clip"},
+                                                        {"op": "calibrate", "method": "aci"}]),
+    "combo_dnn_lear_aci": (["lear_clip", "ddnn"], [{"op": "combine", "weights": "equal"}, {"op": "clip"},
+                                                   {"op": "calibrate", "method": "aci"}]),
 }
 
 

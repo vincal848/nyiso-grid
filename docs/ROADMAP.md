@@ -44,6 +44,8 @@ phase; this phase builds the probabilistic LMP signal._
 - **M3b / M4 (2026-10-05)**: spike member and robust combination not adopted; DART v2 positive on validation, now
   paper-traded live. **M5 (2026-10-05)**: monthly DA products, horizons 1-6; the seasonal norm beat the gas x heat-rate
   anchor and the decay model and is the live monthly forecast (`lmp monthly`).
+- **M6 (2026-10-05)**: DDNN-JSU member (4-network ensemble) not adopted: worse alone (+30% DA CRPS); in
+  combination with LEAR + GBM −1.8% DA, not significant. Signal v1 unchanged.
 - **Holdout data complete** (2026-10-02): warehouse and panel cover 2025-10-01..2026-09-30. Still locked.
 
 ## Metric decision (2026-09-28)
@@ -267,6 +269,28 @@ spatio-temporal GNNs deprioritized (weakest real-ISO evidence).
   overlap the 2022-10..2025-09 validation period, so a validation score cannot be trusted; they can be scored cleanly
   only as live shadow members. NBEATSx: its documented gain over a DNN ensemble is 2–5% and not significant on PJM.
   TFT and graph networks: weakest real-ISO evidence (as above).
+
+### M6 result (2026-10-05): DDNN member not adopted; signal v1 unchanged
+Budget used: 2 of 3 (`ddnn-20261005T155208-51c50c`, `ddnn_v3-20261005T162140-04cb4b`); the reserved run was not
+needed. `ddnn*` = `ddnn` (pooled total CRPS 8.56 vs 10.94 for `ddnn_v3`; the v3 inputs made it worse). Presets:
+`ddnn_aci-…28b6e3`, `combo4_eq_aci-…663eca`, `combo_dnn_lear_aci-…7081af`. Total CRPS vs `combo3_eq_aci`:
+
+| candidate | DA | RT | Holm p (DA / RT) |
+|---|---|---|---|
+| `ddnn` (own JSU distribution) | +30.3% | +6.7% | 1.00 / 1.00 |
+| `combo4_eq_aci` (LEAR + GBM + DDNN) | **−1.8%** | −0.0% | 0.31 / 1.00 |
+| `combo_dnn_lear_aci` (LEAR + DDNN) | +2.7% | +4.7% | 1.00 / 1.00 |
+
+Without 2025-06-24 the picture is the same; PBO over the four = 0.003. No candidate passes, so **signal v1 is unchanged**.
+- Where the DDNN fails: in ordinary months it is close to LEAR (median fold RMSE ratio 1.09 DA, 1.03 RT); in
+  cold-weather shock months it is far worse (DA RMSE 58 vs 30 in 2022-12, Winter Storm Elliott; 84 vs 24 in 2025-01).
+  It cannot extrapolate beyond its training range (and the tail guard caps it there), while LEAR extrapolates
+  linearly in asinh space.
+- Training stopped early: networks ran 21–115 epochs (median ~30) with patience 20, so many had their best
+  validation loss within the first few epochs. The literature tunes DNNs with about a day of hyperparameter search
+  per market; M6 fixed the architecture in advance. Follow-ups are in the research log.
+- Smoke-test fixes before the runs (fold 1, not logged): the output quantiles were sorted together with the
+  trimmed-mean grid (wrong quantiles); tails are now clipped to the training range of the transformed target.
 
 ## M7
 Single holdout evaluation, freeze signal v1.
