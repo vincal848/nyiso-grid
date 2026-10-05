@@ -41,6 +41,7 @@ Status: `open` (not started), `tried` (result recorded), `blocked` (needs data o
 | RT spike track (M3b): sparse logistic P(spike) + ORDC-aware magnitude + EVT tail | Models lose to persistence in top-5% RT hours | Roadmap M3b; Hubert, Lolas & Sircar 2026 | Training milestone with budget | open |
 | QRA / LQRA, isotonic distributional regression, conformal ensemble (M4) | 98% intervals miss ~3% with clustered misses | Scoreboard (Christoffersen p ≈ 0) | Mostly post-processing | open |
 | EVT (GPD) tail splice above the 0.9 quantile | Heavy tails | Literature | Post-processing | open |
+| DART v2: size on conditional-mean forecasts + RT spike risk | DART prototype loses (holdout −$195k): v1's median-like RT forecast understates the RT mean by ~$4.5 (validation), biasing the spread to INC | docs/experiments/dart_prototype.md | Mean-targeting members or distribution mean; spike model (M3b); joint DA/RT (M4) | open |
 | Joint DA/RT samples | DART P&L needs the spread's error correlation | Roadmap M4 | Moderate | open |
 | LEAR blow-up guard in shock months | M7: LEAR's DA MAE 140 $/MWh in 2026-01 made signal v1's DA RMSE worse than persistence on the holdout | M7 result (docs/SIGNAL_V1.md) | Post-processing (shrink toward persistence when inputs leave the training range) or robust LEAR loss | open |
 | LEAR v2 with corrected load / HRRR inputs | `lear_wx` tested on LEAR v1 only | — | One full run | open |

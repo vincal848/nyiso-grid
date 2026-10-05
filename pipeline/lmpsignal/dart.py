@@ -93,7 +93,15 @@ def write_report(summary: pd.DataFrame, by_zone: pd.DataFrame, path) -> None:
            f"Positions per internal zone and hour, at most 1 MW, cost ${COST:.2f}/MWh traded. P&L in $ per 1 MW position "
            "limit summed over zones and hours. Validation = stored out-of-sample forecasts 2022-10..2025-09; holdout = "
            "the M7 run 2025-10..2026-09.", "", "## Summary", "", md(summary), "", "## P&L by zone", "",
-           md(by_zone.pivot(index="zone", columns="period", values="pnl_signal").reset_index()), ""]
+           md(by_zone.pivot(index="zone", columns="period", values="pnl_signal").reset_index()), "",
+           "## Diagnosis (2026-10-05)", "",
+           "The declared rule loses despite a 55-56% hit rate: losing hours are much larger than winning ones. Signal "
+           "v1's point forecast behaves like a median (LightGBM-L1 targets the median; LEAR is fit in asinh space), "
+           "and RT prices are right-skewed, so the RT forecast understates the RT mean more than DA: validation "
+           "averages RT 38.0 forecast vs 42.5 actual, DA 41.2 vs 42.6. The forecast spread therefore leans ~+$3 to "
+           "INC while the realized spread averages ~0, and RT spikes punish the INC bias. A DART rule needs "
+           "conditional-mean forecasts (mean-targeting models, or the forecast distribution's mean) and explicit RT "
+           "spike risk (M3b, joint DA/RT in M4). Logged in docs/RESEARCH_LOG.md; the declared rule is not re-tuned.", ""]
     path.write_text("\n".join(doc), encoding="utf-8")
 
 
