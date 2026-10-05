@@ -323,6 +323,35 @@ def dart(rule: str = typer.Option("v1", help="v1 (prototype) or v2 (M4: distribu
 
 
 @app.command()
+def m5(models: str = typer.Argument(..., help="Comma-separated declared M5 models (m5_persist, m5_lastyear, m5_norm, "
+                                               "m5_anchor, m5_decay)"),
+       window: str = typer.Option("validation", help="validation | holdout (the declared single check, after adoption)")):
+    """M5 monthly DA products (horizons 1-6), one registry run per model. Budget: see docs/ROADMAP.md (M5 declaration)."""
+    from lmpsignal import monthly
+
+    names = models.split(",")
+    cache = monthly.compute()
+    for m in names:
+        monthly.run(m, window, cache=cache)
+
+
+@app.command()
+def monthly(day: str = typer.Option(None, "--date", help="Issue on or before this date (default: today)")):
+    """Live monthly forecasts (latest vintage, six target months) with the M5 choice per component -> live_monthly."""
+    from datetime import date, datetime
+    from zoneinfo import ZoneInfo
+
+    from lmpsignal import monthly as mo
+    from lmpsignal.presets import M5_CHOICE
+
+    d = date.fromisoformat(day) if day else datetime.now(ZoneInfo("America/New_York")).date()
+    out = mo.live(d, M5_CHOICE)
+    s = out[out["period"] == "peak"].groupby(["component", "month"])["mean"].mean().unstack(0).round(2)
+    typer.echo(f"monthly vintage {out['cutoff'].iloc[0]} ({M5_CHOICE}); on-peak means over internal zones:")
+    typer.echo(s.to_string())
+
+
+@app.command()
 def graphs(model: str = typer.Option("struct_cong_l2", help="Structural model whose latest run's artifacts to compile")):
     """Compile structural-model artifacts into data/structure.duckdb (shift-factor, co-binding and drift graphs)."""
     from lmpsignal import graphs as g
