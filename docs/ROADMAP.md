@@ -242,5 +242,31 @@ Feed-forward DNN / NBEATSx ensemble (4+ runs), distributional DNN (Johnson SU); 
 Chronos-2 with covariates as one ensemble member (check pretraining contamination). TFT and
 spatio-temporal GNNs deprioritized (weakest real-ISO evidence).
 
+### M6 declaration (2026-10-05, before any M6 run)
+- **Member** `ddnn`: distributional feed-forward network with Johnson's SU output (DDNN-JSU, Marcjasz, Narajewski,
+  Weron & Ziel 2023), the strongest classic CRPS model in the research notes. One network per market (DA, RT), pooled
+  over the 15 locations. Input per location-day: the panel features for the 24 hours of D (all as of 05:00 ET D−1),
+  location one-hot and weekday. Output: JSU parameters for the 24 hours × 4 targets (total, energy, loss, congestion).
+  Targets are standardized per fold (median, MAD) and asinh-transformed; quantiles map back through the inverse.
+  Architecture fixed in advance, no hyperparameter search: 2 hidden layers (512, 256), ReLU, dropout 0.1, weight decay
+  1e-5, Adam (lr 1e-3, batch 256), early stopping on the last 56 days of the training window (patience 20, at most 200
+  epochs). Training window: all panel data up to the fold's training end (same monthly refit as the other members).
+  **Ensemble of 4 networks** (seeds 0–3) per fold and market, combined by averaging quantiles (the qEns variant).
+  Point forecast = mean of the 1%..99% quantiles (a trimmed mean; the JSU-of-asinh mean can explode).
+- **Budget: 3 full runs.** (1) `ddnn` with feature set v1 (signal v1's inputs); (2) `ddnn_v3` with v3 (+ HRRR,
+  weather-corrected load); (3) reserved for one bug-fix re-run. Smoke runs (≤ 2 folds, not logged) do not count.
+- **Post presets** (with `ddnn*` = the run with the lower pooled total CRPS, chosen before any combination is scored):
+  `ddnn_aci` (ACI over the member's mean, for the scoreboard), `combo4_eq_aci` (equal-weight mean of `lear_clip`,
+  `gbm_l1`, `ddnn*`, then clip and ACI), `combo_dnn_lear_aci` (equal-weight `lear_clip` + `ddnn*`, the literature's
+  "DNN ensemble averaged with LEAR"; then clip and ACI).
+- **Adoption rule**: a candidate (`ddnn*` raw, `combo4_eq_aci`, `combo_dnn_lear_aci`) replaces signal v1 only if pooled
+  total CRPS improves on `combo3_eq_aci` in **both** DA and RT, each with Holm-adjusted DM p < 0.05 (Holm over the
+  three), with and without 2025-06-24, and PBO < 0.5. Validation only (the holdout is spent); a signal change would go
+  live as v2 with the live track record as its out-of-sample evidence.
+- **Not run in M6** (research log): Chronos-2 and TabPFN-TS, because their pretraining corpora and cutoffs (2025)
+  overlap the 2022-10..2025-09 validation period, so a validation score cannot be trusted; they can be scored cleanly
+  only as live shadow members. NBEATSx: its documented gain over a DNN ensemble is 2–5% and not significant on PJM.
+  TFT and graph networks: weakest real-ISO evidence (as above).
+
 ## M7
 Single holdout evaluation, freeze signal v1.
