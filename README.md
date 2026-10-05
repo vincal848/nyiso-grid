@@ -160,16 +160,19 @@ The backfill downloads about 7 GB of public data. Everything under `data/` is gi
 ## Roadmap
 
 Done: warehouse and dashboard; M0 data audit; M1 validation harness; M2 statistical models; M2.5
-post-processing; M3 structural congestion (first version).
+post-processing; M3 structural congestion (outage mapping tried: no congestion gain); HRRR weather and a
+weather-to-load correction (−8% load error vs NYISO's usable forecast); **signal v1 frozen and evaluated once on
+the 2025-10..2026-09 holdout (M7)**: total-price CRPS 16% (DA) and 26% (RT) below yesterday's DA price, intervals
+calibrated, DA point error worse than persistence in the January 2026 shock (`docs/SIGNAL_V1.md`).
 
-Next:
-- Map outages to constraints for congestion.
-- An RT spike model (occurrence plus magnitude tied to NYISO's reserve shortage pricing).
-- Distributional calibration with extreme-value tails and joint DA/RT scenarios.
-- Horizon extension toward monthly curve products.
-- The final holdout evaluation.
+Live: `scripts/daily.py` runs every morning at 04:30 ET (data refresh → panel → `lmp forecast` → `lmp nodes`) and the
+dashboard's Signal tab shows the forecast, its track record and node prices. A DART prototype
+(`docs/experiments/dart_prototype.md`) loses money as declared, and shows why: the point forecast is median-like
+while trading needs the conditional mean.
 
-After that come the DART and TCC pricers.
+Training is bounded by the protocol in `docs/ROADMAP.md`; parked ideas live in `docs/RESEARCH_LOG.md`. Next:
+- RT spike model (M3b) and tail/joint DA–RT calibration (M4), each with a declared run budget.
+- DART v2 on conditional-mean forecasts; TCC pricing from structural node shift factors.
 
 ## Data and licensing notes
 

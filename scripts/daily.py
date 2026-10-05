@@ -18,6 +18,7 @@ Usage:  uv run python scripts/daily.py [--date YYYY-MM-DD] [--skip-data]
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -55,7 +56,8 @@ def main() -> int:
             t = time.time()
             fh.write(f"$ uv run {' '.join(cmd)}\n")
             fh.flush()
-            r = subprocess.run(["uv", "run", *cmd], cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+            uv = os.environ.get("UV", "uv")         # `uv run` exports its own path; scheduled tasks may lack PATH
+            r = subprocess.run([uv, "run", *cmd], cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
             fh.write(f"-> exit {r.returncode} in {time.time() - t:.0f}s\n")
             fh.flush()
             if r.returncode != 0:
