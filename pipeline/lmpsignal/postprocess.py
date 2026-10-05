@@ -38,6 +38,9 @@ KEYS = ["delivery_date", "ts_utc", "zone", "hour_local", "market", "component"]
 
 
 def load_run(run_id: str, cols=("mean",)) -> pd.DataFrame:
+    """Stored predictions of a run. 'runA+runB' concatenates runs (M7: validation run + its holdout continuation)."""
+    if "+" in run_id:
+        return pd.concat([load_run(r, cols) for r in run_id.split("+")], ignore_index=True)
     path = (EXPERIMENTS_DIR / run_id).as_posix()
     have = {r[0] for r in duckdb.sql(f"DESCRIBE SELECT * FROM read_parquet('{path}/fold=*.parquet')").fetchall()}
     cols = [c for c in cols if c in have]

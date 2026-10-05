@@ -52,3 +52,4 @@ Status: `open` (not started), `tried` (result recorded), `blocked` (needs data o
 |---|---|---|
 | Retry LEAR when a loky worker dies on Windows (0x800703e5) | `lear_wx` failed once at worker start-up, re-run succeeded | open |
 | Install ruff in the dev environment | Lint was not run on recent commits | open |
+| Version the panel per run (snapshot or content hash per column) | `gbm_l1` could not be reproduced exactly for M7: panel changed after the validated runs (docs/SIGNAL_V1.md) | open |

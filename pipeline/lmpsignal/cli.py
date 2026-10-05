@@ -163,6 +163,67 @@ def post(name: str = typer.Argument(..., help=f"Preset: {', '.join(POST_PRESETS)
         typer.echo(weights.groupby(["market", "component"]).mean(numeric_only=True).round(3).to_string())
 
 
+# Base-model constructors exactly as validated for signal v1 (docs/SIGNAL_V1.md). The validated LEAR run predates
+# LEAR's internal clip option (clipping comes from the lear_clip post step), so it is LEAR(clip=False); verified to
+# reproduce the stored validation predictions exactly (fold 2022-10, max abs diff 0).
+FROZEN_BASES = {
+    "lear": lambda: __import__("lmpsignal.models.lear", fromlist=["LEAR"]).LEAR(clip=False),
+    "gbm_l1": lambda: __import__("lmpsignal.models.gbm", fromlist=["GBM"]).GBM(objective="l1"),
+}
+
+
+@app.command()
+def m7(candidate: str = typer.Argument(..., help="The frozen signal v1 (a model or post preset name)")):
+    """M7: the single holdout evaluation of the frozen signal v1. Requires LMP_UNLOCK_HOLDOUT=I_AM_RUNNING_M7.
+
+    Base models are refit monthly over the holdout exactly as in validation (logged as <model>_m7); the frozen
+    post-processing chain then runs over validation + holdout so calibration continues without a break (logged as
+    <preset>_m7); naive benchmarks are run on the holdout too. Only holdout months are scored in the summary."""
+    import json
+    import time
+
+    from lmpsignal import cv, panel, postprocess, registry, runner
+    from lmpsignal.config import HOLDOUT_END, HOLDOUT_START, holdout_unlocked
+    from lmpsignal.diagnostics import completed_runs
+    from lmpsignal.models.naive import Naive
+
+    if not holdout_unlocked():
+        raise typer.BadParameter("holdout is locked: set LMP_UNLOCK_HOLDOUT=I_AM_RUNNING_M7 for the single M7 run")
+    t = time.time()
+    p = panel.load(end=HOLDOUT_END)
+    val_folds, hold_folds = cv.folds(), cv.folds(start=HOLDOUT_START, end=HOLDOUT_END)
+    ref = Naive(runner.REFERENCE)
+    resolved: dict[str, str] = {}
+
+    def resolve(name: str) -> str:
+        if name in resolved:
+            return resolved[name]
+        if name in POST_PRESETS:
+            parents, steps = POST_PRESETS[name]
+            specs = {m: resolve(m) for m in parents}
+            steps = [dict(s, components={k: specs[v] for k, v in s["components"].items()}) if s["op"] == "assemble"
+                     else s for s in steps]
+            rid, _ = postprocess.run(name + "_m7", [specs[m] for m in parents], steps, panel=p,
+                                     folds=val_folds + hold_folds)
+        else:
+            val = completed_runs([name])[name]
+            model = (FROZEN_BASES.get(name) or MODELS[name])()
+            model.name = name + "_m7"
+            rid = val + "+" + runner.run(model, p, folds=hold_folds, reference=ref, quantiles="oos_residual")
+        typer.echo(f"  {name} -> {rid}  ({time.time() - t:.0f}s)")
+        resolved[name] = rid
+        return rid
+
+    final = resolve(candidate)
+    for rule in ("persist_da_d1", "lago_naive", "zero_congestion"):
+        bench = MODELS[rule]() if rule in MODELS else Naive(rule)
+        bench.name = rule + "_m7"
+        resolved[rule] = runner.run(bench, p, folds=hold_folds, reference=ref, verbose=False)
+    (registry.EXPERIMENTS_DIR / "m7_lineage.json").write_text(json.dumps({"candidate": candidate, **resolved}, indent=1))
+    typer.echo(f"M7 {candidate} -> {final}; benchmarks {resolved['persist_da_d1']}, {resolved['lago_naive']} "
+               f"in {time.time() - t:.0f}s")
+
+
 @app.command()
 def graphs(model: str = typer.Option("struct_cong_l2", help="Structural model whose latest run's artifacts to compile")):
     """Compile structural-model artifacts into data/structure.duckdb (shift-factor, co-binding and drift graphs)."""

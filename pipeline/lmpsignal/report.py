@@ -27,7 +27,9 @@ def _md(df: pd.DataFrame, floatfmt: str = "{:.3f}") -> str:
 
 def _runs(models: list[str] | None) -> dict[str, str]:
     with registry.connect(read_only=True) as con:
+        # validation scoreboard only: M7 holdout runs (<name>_m7) are reported separately
         rows = con.execute("""SELECT model, arg_max(run_id, created_utc) FROM runs r WHERE status = 'done'
+                                AND NOT suffix(model, '_m7')
                                 AND EXISTS (SELECT 1 FROM scores s WHERE s.run_id = r.run_id AND s.market IN ('da', 'rt'))
                               GROUP BY model ORDER BY model""").fetchall()
     return {m: r for m, r in rows if models is None or m in models}
