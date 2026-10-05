@@ -67,3 +67,25 @@ def test_spike_mix_moves_mean_and_upper_tail_by_the_spike_probability():
     assert out["q50"].iloc[0] < 60 and out["q95"].iloc[0] > 200        # median stays in the base, top 5% in the spike
     zero = postprocess.spike_mix(base, spike.assign(p_spike=0.0))
     assert np.allclose(zero[QCOLS].to_numpy(), base[QCOLS].to_numpy(), atol=0.5)
+
+
+def test_cli_and_scripts_import():
+    """Catch syntax errors in modules the unit tests do not otherwise import."""
+    import importlib
+    import runpy  # noqa: F401
+    from pathlib import Path
+
+    importlib.import_module("lmpsignal.cli")
+    root = Path(__file__).resolve().parents[2]
+    compile((root / "scripts" / "daily.py").read_text(encoding="utf-8"), "daily.py", "exec")
+
+
+def test_median_combination_ignores_one_blown_up_member():
+    from lmpsignal import cv, postprocess
+
+    f = cv.folds()[0]
+    k = {"delivery_date": pd.Timestamp(f.test_start), "ts_utc": pd.Timestamp(f.test_start, tz="UTC"), "zone": "WEST",
+         "hour_local": 0, "market": "da", "component": "total", "y": 50.0, "scored": True, "ref_mean": np.nan}
+    parents = {n: pd.DataFrame([{**k, "mean": v}]) for n, v in (("a", 48.0), ("b", 900.0), ("c", 52.0))}
+    out, _ = postprocess.combine(parents, [f], "median")
+    assert out["mean"].iloc[0] == 52.0
