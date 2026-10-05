@@ -292,5 +292,25 @@ Without 2025-06-24 the picture is the same; PBO over the four = 0.003. No candid
 - Smoke-test fixes before the runs (fold 1, not logged): the output quantiles were sorted together with the
   trimmed-mean grid (wrong quantiles); tails are now clipped to the training range of the transformed target.
 
+## M8: live shadow members (foundation models)
+
+### M8 declaration (2026-10-05, before any M8 forecast)
+- **Why live only**: foundation models are pretrained on public series up to 2025, which overlaps the 2022-10..2025-09
+  validation folds (and possibly NYISO data itself). Validation scores would be untrustworthy, so **none are
+  computed**; the clean test is forecasts issued live, before the outcome exists.
+- **Member** `chronos2`: Chronos-2 (`amazon/chronos-2`, Apache-2.0), zero-shot, no fine-tuning. Per location (15)
+  and market, the target is the hourly total price in UTC hours. Context: the last 28 days known at issue (DA through
+  D−1; RT through the last hour ending at or before 05:00 ET D−1). Covariates: zone load forecast and temperature
+  forecast (panel values, past and future). Forecast: the 21 signal quantiles for D's hours (RT includes the gap
+  hours between issue and D, which are dropped). Mean = average of the q05..q95 quantiles.
+- **Output**: `live_shadow` in experiments.duckdb, beside `live_forecasts`; daily job step `lmp shadow`; it never
+  feeds signal v1, DART or the dashboard forecast.
+- **Evaluation**: on settled live days, total-price CRPS, RMSE and 90% coverage vs signal v1 on the same rows
+  (`lmp shadow --score`). First read-out after 90 settled days: one-sided DM test vs signal v1 per market, and the
+  CRPS of an equal-weight mean of the two (descriptive). Entering a signal requires a new declared milestone using
+  the live record as its evidence; nothing is adopted from M8 directly.
+- **Not in M8**: TabPFN-TS (a second member doubles the daily run time; added only if Chronos-2 shows promise),
+  fine-tuning (would need a clean training/evaluation split again).
+
 ## M7
 Single holdout evaluation, freeze signal v1.
