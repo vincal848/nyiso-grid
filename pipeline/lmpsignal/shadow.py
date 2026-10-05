@@ -123,4 +123,4 @@ def score(signal: str = "combo3_eq_aci") -> pd.DataFrame:
             rows.append({"model": name, "market": m, "days": g["ts_utc"].dt.date.nunique(), "n": len(g),
                          "crps": g["crps"].mean(), "rmse": float(np.sqrt(((g["mean"] - g["y"]) ** 2).mean())),
                          "cov90": float(((g["y"] >= g["q05"]) & (g["y"] <= g["q95"])).mean())})
-    return pd.DataFrame(rows).sort_values(["market", "model"])
+    return pd.DataFrame(rows).sort_values(["market", "model"]) if rows else pd.DataFrame()
