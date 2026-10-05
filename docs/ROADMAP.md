@@ -99,6 +99,26 @@ error, decayed counts of recent spikes, NYC/LI outages, thunderstorm proxy × lo
 ORDC-aware magnitude model (energy + Σ P(shortage_k) × reserve-curve step + congestion) with an EVT tail.
 Report results with and without 2025-06-24 (single-event concentration).
 
+### M3b declaration (2026-10-05, before any M3b run)
+- **Target**: RT total price spikes. Spike = RT total ≥ the zone's 95th percentile of RT total over the 365 training
+  days before the fold's training end (top-5% hours carry 30–38% of absolute DART spread in validation).
+- **Model** (`spike` member): per-zone-hour P(spike) from an L1-regularized logistic regression pooled over the 11
+  internal zones (zone and hour-block indicators); spike magnitude as threshold + GPD-fitted excess per zone, fit
+  in-fold. Features, from the research notes (MMU drivers; Hubert, Lolas & Sircar 2026), all as of 05:00 ET D−1:
+  lagged reserve prices (RT ASP up to issue, DA ASP of D−1) and shortage counts (RT 10/30-min reserve price above
+  $50 over the last 7 days), decayed counts of recent zone spikes (RT through D−2), load-forecast surprise
+  (`load_surprise_*`), HRRR storm proxy (CAPE p90 × reflectivity share × hot-hour load), temperature extremes,
+  NYC/LI outages on the DAM list of D−1, gas.
+- **Integration** (post-processing over signal v1, RT total only; components unchanged in this milestone):
+  mixture F = (1 − p)·F_v1 + p·F_spike. Post variants declared: `v1_spike_mix` and `v1_spike_mix_aci` (ACI after the mix).
+- **Budget: 3 full runs.** (1) full features; (2) ablation without HRRR storm features; (3) reserved for one
+  bug-fix re-run. Smoke runs do not count. Post variants: the two above only.
+- **Metrics**: spike Brier and log loss vs in-fold climatology and vs "spiked at D−2" persistence; RT total CRPS
+  pooled and on top-5% hours vs `combo3_eq_aci`, DM tests, all reported with and without 2025-06-24.
+- **Adoption rule**: a variant becomes signal v2 only if pooled RT total CRPS and top-5%-hour RT CRPS both improve
+  on `combo3_eq_aci` with Holm-adjusted DM p < 0.05 (both with and without 2025-06-24). The holdout is spent (M7),
+  so v2 evidence is validation plus the live track record; no second holdout evaluation.
+
 ## M4: probabilistic combination (evidence: strong for DA, European)
 QRA / LQRA over the member pool + isotonic distributional regression + conformal ensemble; EVT (GPD)
 tail splice above the ~0.9 conditional quantile; joint DA/RT samples so the DA−RT spread keeps its
