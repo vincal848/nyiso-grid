@@ -146,6 +146,25 @@ while post-processing ran concurrently; marked failed); run 3 its re-run `spike_
 - Not attempted in this milestone (left in the research log): QRA/LQRA, isotonic distributional regression, EVT
   tail splice (the M7 intervals are already calibrated at 90% and 98%).
 
+### M4 result (2026-10-05): no candidate adopted; DART v2 is positive on validation
+Budget used: 2 of 3 (`combo3_med_aci-20261005T073759-06aab6`, `combo3_med_spike-20261005T073858-3a40a6`). The
+reserved run went to a bug fix in the DART v2 backtest (ρ for the first validation month, which has no earlier
+residuals: now 0), not to a signal re-run.
+
+| market | candidate | CRPS v1 | CRPS cand | change | Holm p | change ex 06-24 | Holm p ex 06-24 |
+|---|---|---|---|---|---|---|---|
+| DA | combo3_med_aci | 4.432 | 4.659 | +5.1% | 1.00 | +5.3% | 1.00 |
+| DA | combo3_med_spike | 4.432 | 4.659 | +5.1% | 1.00 | +5.3% | 1.00 |
+| RT | combo3_med_aci | 10.754 | 10.751 | −0.03% | 0.48 | −0.00% | 0.50 |
+| RT | combo3_med_spike | 10.754 | 10.623 | −1.2% | 0.22 | −1.1% | 0.27 |
+
+- The median of three often picks `persist_da_d1`, so it gives up the LEAR/GBM average's DA skill (DA RMSE 12.7 vs
+  12.0). The spike mix only touches RT, which is why the two candidates are identical in DA. **Signal v1 is unchanged.**
+- DART v2 (`docs/experiments/dart_v2.md`, validation only): +$231k (+$2.96/MWh, Sharpe 0.92, max drawdown −$39k), or
+  +$258k without 2025-06-24. Same rows: DART v1 −$30k, persistence −$16k. Hit rate is 48%, so gains come from size,
+  not frequency; the top 1% of days carry 80% of P&L. The holdout is spent, so this has **no out-of-sample
+  confirmation**: it goes into paper trading on the live forecasts before any capital (research log).
+
 ## M4: probabilistic combination (evidence: strong for DA, European)
 QRA / LQRA over the member pool + isotonic distributional regression + conformal ensemble; EVT (GPD)
 tail splice above the ~0.9 conditional quantile; joint DA/RT samples so the DA−RT spread keeps its

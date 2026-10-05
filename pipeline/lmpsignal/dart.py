@@ -147,6 +147,8 @@ def positions_v2(signal_run: str, spike_run: str, lags: pd.DataFrame | None = No
     for mon in w["month"].unique():
         end = pd.Timestamp(month_fold(mon.to_timestamp().date()).train_end)
         h = w[(w["delivery_date"] < end) & (w["delivery_date"] >= end - pd.Timedelta(days=365))]
+        if h.empty:                                                # first months: no prior OOS residuals -> rho = 0
+            continue
         c = h.groupby("zone").apply(lambda g: g["r_da"].corr(g["r_rt"]), include_groups=False)
         rho.append(pd.DataFrame({"month": mon, "zone": c.index, "rho": c.to_numpy()}))
     w = w.merge(pd.concat(rho, ignore_index=True), on=["month", "zone"], how="left")

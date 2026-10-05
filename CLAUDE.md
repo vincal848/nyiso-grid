@@ -70,6 +70,6 @@
 - `uv run lmp post <preset>` — clip / combine / calibrate stored predictions (seconds to minutes, logged as a trial)
 - `uv run lmp m7 <signal>` — the single holdout evaluation (needs `LMP_UNLOCK_HOLDOUT=I_AM_RUNNING_M7`; done for v1)
 - `uv run lmp forecast [--date D]` / `uv run lmp nodes [--date D]` — live forecast of the frozen signal (zones / nodes)
-- `uv run lmp dart` — DART prototype backtest on stored forecasts -> docs/experiments/dart_prototype.md
+- `uv run lmp dart [--rule v1|v2]` — DART backtest on stored forecasts -> docs/experiments/dart_prototype.md (v1) / dart_v2.md (v2)
 - `uv run python scripts/daily.py` — daily job: data refresh, build, panel, forecast, nodes (scheduled 04:30 ET)
 - `uv run pytest`
