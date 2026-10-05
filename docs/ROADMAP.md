@@ -129,6 +129,23 @@ while post-processing ran concurrently; marked failed); run 3 its re-run `spike_
 - Adoption rule needs both gains significant, so **signal v1 is unchanged**. The spike probabilities stay available
   as a separate risk output (and as an input for DART v2, see `docs/RESEARCH_LOG.md`).
 
+### M4 declaration (2026-10-05, before any M4 run) — post-processing only, no base-model runs
+- **Signal candidates** (budget: 2 post presets + 1 reserved for a bug-fix re-run):
+  1. `combo3_med_aci`: robust combination, the **median** of `lear_clip`, `gbm_l1` and `persist_da_d1` point
+     forecasts (instead of the mean of the first two), then clip and ACI. Guards against one member blowing up, as
+     LEAR did in January 2026 (M7).
+  2. `combo3_med_spike`: candidate 1, then `spike_mix` with `spike_full` on RT total (M3b's −12% on spike hours).
+- **Adoption rule**: a candidate replaces signal v1 only if pooled total CRPS improves on `combo3_eq_aci` in **both**
+  DA and RT, each with Holm-adjusted DM p < 0.05 (Holm over the candidates), with and without 2025-06-24. Validation
+  only: the holdout is spent.
+- **DART v2** (trading rule, not part of the signal; declared, not tuned): spread s = DA distribution mean − RT
+  mixture mean, where the distribution mean is the average of the q05..q95 quantiles and the RT mean mixes in the
+  spike member, (1 − p)·mean_RT + p·spike mean; spread scale σ_s = sqrt(σ_DA² + σ_RT² − 2ρσ_DAσ_RT) with ρ the zone's
+  DA/RT residual correlation over the 365 days before the month (as of the fold's training end). Position and cost as
+  in DART v1. Reported on validation only, against DART v1 and the persistence rule, with and without 2025-06-24.
+- Not attempted in this milestone (left in the research log): QRA/LQRA, isotonic distributional regression, EVT
+  tail splice (the M7 intervals are already calibrated at 90% and 98%).
+
 ## M4: probabilistic combination (evidence: strong for DA, European)
 QRA / LQRA over the member pool + isotonic distributional regression + conformal ensemble; EVT (GPD)
 tail splice above the ~0.9 conditional quantile; joint DA/RT samples so the DA−RT spread keeps its
