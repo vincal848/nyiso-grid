@@ -38,6 +38,9 @@ phase; this phase builds the probabilistic LMP signal._
   448). The calendar-only ablation (619 MW) shows the gain is weather, not level-bias learning. ISOLF runs up
   to 13% below P-58B actuals with a seasonal pattern, so raw-ISOLF comparisons overstate any model.
   Next (step 3): corrected load and load surprise as price-model features (OOS stacking table), then M3b.
+- **M7 (2026-10-05): signal v1 frozen and evaluated once.** `combo3_eq_aci` (selection rule, pooled CRPS 7.593).
+  Holdout total CRPS DA 9.75 vs 11.54 for yesterday's DA (−16%), RT 14.55 vs 19.56 (−26%); intervals calibrated;
+  DA RMSE worse than persistence because of January 2026. Details: `docs/SIGNAL_V1.md`.
 - **Holdout data complete** (2026-10-02): warehouse and panel cover 2025-10-01..2026-09-30. Still locked.
 
 ## Metric decision (2026-09-28)

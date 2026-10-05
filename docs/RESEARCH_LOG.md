@@ -42,6 +42,7 @@ Status: `open` (not started), `tried` (result recorded), `blocked` (needs data o
 | QRA / LQRA, isotonic distributional regression, conformal ensemble (M4) | 98% intervals miss ~3% with clustered misses | Scoreboard (Christoffersen p ≈ 0) | Mostly post-processing | open |
 | EVT (GPD) tail splice above the 0.9 quantile | Heavy tails | Literature | Post-processing | open |
 | Joint DA/RT samples | DART P&L needs the spread's error correlation | Roadmap M4 | Moderate | open |
+| LEAR blow-up guard in shock months | M7: LEAR's DA MAE 140 $/MWh in 2026-01 made signal v1's DA RMSE worse than persistence on the holdout | M7 result (docs/SIGNAL_V1.md) | Post-processing (shrink toward persistence when inputs leave the training range) or robust LEAR loss | open |
 | LEAR v2 with corrected load / HRRR inputs | `lear_wx` tested on LEAR v1 only | — | One full run | open |
 | DNN / NBEATSx ensemble, distributional DNN, TabPFN-TS / Chronos-2 member (M6) | Literature gains 3–8% rMAE over LEAR (European DA) | Literature | Large | open |
 | Horizon extension (M5): bid-stack anchor, seasonal norms | Needed for TCC / monthly products | Roadmap | Large | open |

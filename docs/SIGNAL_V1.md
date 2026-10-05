@@ -46,6 +46,39 @@ candidate (no HRRR / load-model dependency) wins under the rule. Full table: `do
   calibration history taken from the stored validation runs. Fix logged in `docs/RESEARCH_LOG.md`: version the
   panel per run.
 
-## Holdout (M7)
+## Holdout (M7, run once on 2026-10-05)
 
-_Pending: `LMP_UNLOCK_HOLDOUT=I_AM_RUNNING_M7 uv run lmp m7 combo3_eq_aci`._
+`LMP_UNLOCK_HOLDOUT=I_AM_RUNNING_M7 uv run lmp m7 combo3_eq_aci` at commit `b1b1c8e`: base models refit monthly over
+2025-10..2026-09 with the validation rule; the frozen chain continued over validation + holdout. Runs:
+`lear_m7-20261005T045943-b0d998`, `lear_clip_m7-20261005T051922-13256f`, `gbm_l1_m7-20261005T052010-ccdb0a`,
+`combo3_eq_aci_m7-20261005T053459-548f60`; benchmarks `persist_da_d1_m7-20261005T053547-581643`,
+`lago_naive_m7-20261005T053653-e7c74b`. Lineage: `data/experiments/m7_lineage.json`. (A first attempt stopped in
+fold 2026-01 on a scoring bug, before any result was produced: NORTH had zero RT congestion all month; fixed in
+`b1b1c8e`.)
+
+Total price ($/MWh):
+
+| | DA CRPS | DA RMSE | DA MAE | RT CRPS | RT RMSE | RT MAE | 90% / 98% coverage DA, RT |
+|---|---|---|---|---|---|---|---|
+| **Signal v1, holdout** | **9.75** | 42.54 | **11.43** | **14.55** | **50.97** | **17.89** | 0.89 / 0.97, 0.91 / 0.98 |
+| persist_da_d1, holdout | 11.54 | **34.42** | 13.94 | 19.56 | 64.86 | 23.84 | 0.90 / 0.96, 0.89 / 0.96 |
+| lago_naive, holdout | 16.45 | 47.21 | 19.30 | 23.37 | 70.93 | 28.23 | |
+| Signal v1, validation | 4.43 | 11.89 | 5.59 | 10.75 | 50.20 | 13.07 | 0.90 / 0.97, 0.90 / 0.97 |
+
+Diebold–Mariano vs `persist_da_d1` on the holdout (one-sided p, 365 days): total CRPS DA 0.088, RT 0.017; total
+squared error DA 0.759, RT 0.096. Congestion CRPS: DA 2.36 vs 2.54, RT 3.75 vs 4.17 (`zero_congestion` still has the
+lowest congestion MAE).
+
+Monthly total CRPS, signal v1 / persist_da_d1:
+
+| | 25-10 | 25-11 | 25-12 | 26-01 | 26-02 | 26-03 | 26-04 | 26-05 | 26-06 | 26-07 | 26-08 | 26-09 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| DA | 3.2 / 4.1 | 3.1 / 5.0 | 8.7 / 15.7 | **53.7 / 47.1** | 11.4 / 16.7 | 4.6 / 7.0 | 3.7 / 5.2 | 3.3 / 5.5 | 2.9 / 5.1 | 10.2 / 17.5 | **8.8 / 5.0** | 2.8 / 4.2 |
+| RT | 7.2 / 8.1 | 8.9 / 9.8 | 17.0 / 22.0 | 43.5 / 76.7 | 18.3 / 24.0 | 11.9 / 13.0 | 8.3 / 9.0 | 9.1 / 10.6 | 10.9 / 12.7 | 20.6 / 27.8 | 11.7 / 12.4 | 6.8 / 7.9 |
+
+**Reading.** The holdout year was far more volatile than validation (total CRPS roughly doubled). On the primary
+metric the signal generalizes: CRPS 16% (DA) and 26% (RT) below yesterday's DA price, better in every RT month and
+10 of 12 DA months, significant in RT. Intervals are well calibrated, including the 98% level that missed in
+validation. The weakness is the DA point forecast in shock months: DA RMSE is worse than persistence, driven by
+January 2026 (LEAR's DA MAE 140 $/MWh that month) and August 2026. Follow-ups are in `docs/RESEARCH_LOG.md`
+(tail handling, LEAR blow-up guard), to be picked up after the end-to-end build with a declared run budget.
