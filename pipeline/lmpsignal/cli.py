@@ -127,6 +127,11 @@ POST_PRESETS = {
     "gbm_l1_v3_aci": (["gbm_l1_v3"], [{"op": "calibrate", "method": "aci"}]),
     "combo3wx_eq_aci": (["lear_wx_clip", "gbm_l1_v3"], [{"op": "combine", "weights": "equal"}, {"op": "clip"},
                                                        {"op": "calibrate", "method": "aci"}]),
+    # declared candidate of the training protocol (docs/ROADMAP.md): energy/loss from the better combo by pooled total
+    # CRPS (combo3_eq_aci 7.593 vs combo3wx_eq_aci 7.606), congestion from lear2_long_aci, then ACI
+    "assemble_v1_final": (["combo3_eq_aci", "lear2_long_aci"], [{"op": "assemble", "components": {
+        "energy": "combo3_eq_aci", "loss": "combo3_eq_aci", "congestion": "lear2_long_aci"}},
+        {"op": "calibrate", "method": "aci"}]),
     "lear2_long_aci": (["lear2"], [{"op": "windows", "use": ["w364", "w728", "wall"]},
                                    {"op": "calibrate", "method": "aci"}]),
     "assemble_v1e_v2c_aci": (["lear_clip", "lear2"], [{"op": "assemble", "components": {
