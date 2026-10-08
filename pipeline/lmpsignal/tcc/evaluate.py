@@ -21,11 +21,11 @@ FEE_REL = 0.02      # share of the clearing price |c|
 FEE_ABS = 0.5       # $ per MW-month
 
 
-def edge(obs: pd.DataFrame, f: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def edge(obs: pd.DataFrame, f: str, fee_rel: float = FEE_REL) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """(s, o, cost) per row, $ per MW-month."""
     m = obs["months"].to_numpy(float)
     return ((obs[f] - obs["c"]).to_numpy() / m, (obs["y"] - obs["c"]).to_numpy() / m,
-            FEE_REL * np.abs(obs["c"].to_numpy()) / m + FEE_ABS)
+            fee_rel * np.abs(obs["c"].to_numpy()) / m + FEE_ABS)
 
 
 def trade_pnl(s: np.ndarray, o: np.ndarray, cost: np.ndarray) -> np.ndarray:
@@ -66,10 +66,10 @@ def slope(s: np.ndarray, o: np.ndarray, cluster: np.ndarray) -> dict:
     return {"slope": float(beta[1]), "se": float(se[1]), "t": float(beta[1] / se[1]) if se[1] > 0 else np.nan}
 
 
-def permutation_null(obs: pd.DataFrame, f: str, B: int = 1000, seed: int = 0) -> dict:
+def permutation_null(obs: pd.DataFrame, f: str, B: int = 1000, seed: int = 0, fee_rel: float = FEE_REL) -> dict:
     """Shuffle the pricer's edge s across the paths of each auction (the labels of which path gets which edge), keep o and
     cost, and recompute the buy rule's mean P&L. A pricer with real skill beats this null; shuffled edges must not."""
-    s, o, cost = edge(obs, f)
+    s, o, cost = edge(obs, f, fee_rel)
     ok = np.isfinite(s) & np.isfinite(o)
     s, o, cost, auction = s[ok], o[ok], cost[ok], obs["auction"].to_numpy()[ok]
     groups = [np.flatnonzero(auction == a) for a in np.unique(auction)]
@@ -96,14 +96,15 @@ def dm_vs(obs: pd.DataFrame, f: str, base: str) -> dict:
     return diebold_mariano(la[ok], lb[ok], obs.loc[ok, "auction"])
 
 
-def summarize(obs: pd.DataFrame, f: str, baselines: tuple[str, ...], B: int = 4000, seed: int = 0) -> dict:
+def summarize(obs: pd.DataFrame, f: str, baselines: tuple[str, ...], B: int = 4000, seed: int = 0,
+              fee_rel: float = FEE_REL) -> dict:
     """All declared statistics for one forecast column on the rows where the forecast and the target exist."""
     d = obs[obs[f].notna() & obs["y"].notna()].reset_index(drop=True)
-    s, o, cost = edge(d, f)
+    s, o, cost = edge(d, f, fee_rel)
     pnl = trade_pnl(s, o, cost)
     return {"n": len(d), "n_auctions": int(d["auction"].nunique()), "n_paths": int(d["path"].nunique()),
             "slope": slope(s, o, d["auction"].to_numpy()),
             "pnl_path_boot": bootstrap_mean_pnl(pnl, d["path"].to_numpy(), B, seed),
             "pnl_auction_boot": bootstrap_mean_pnl(pnl, d["auction"].to_numpy(), B, seed),
-            "placebo": permutation_null(d, f, seed=seed),
+            "placebo": permutation_null(d, f, seed=seed, fee_rel=fee_rel),
             "dm": {b: dm_vs(d, f, b) for b in baselines}}

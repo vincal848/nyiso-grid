@@ -411,5 +411,40 @@ lines). Code: `tcc/pricer.py`, `tcc/evaluate.py` (pure), `tcc/data.py`, `tcc/run
 - **Not in M9:** valuing risk (variance of path payoff, FTR-style hedging), the reconfiguration auctions' liquidity, outage
   or gas-spread regime features (research log), any payoff after 2025-09-30.
 
+### M9 result (2026-10-08): no edge from the structural model over a persistence baseline; the declared P&L rule does not discriminate
+Budget: 3 full runs declared, 3 used (`tcc_struct_trailing-20261008T060355-0bbd68`, `tcc_struct_seasonal-20261008T060720-fa4641`,
+`tcc_struct_blend_illiquid-20261008T061125-fd462d`); the runs started on a tree with uncommitted edits to the report code
+(`tcc/evaluate.py`, which the runs do not import, gained a fee argument while they ran; the forecasts are unaffected). Tables:
+`docs/experiments/tcc_pricer.md`. Data: 350 rounds ingested (200 centralized, 40 monthly, 110 BOP; 428 POIs; 636,216 award
+lines); universe 148 auction periods, 76,220 path-periods (28 centralized, 120 BOP), final test set 21 BOP periods (11,688).
+- **Declared rule, literally:** `tcc_struct_seasonal` passes: development mean net P&L $255.6 per MW-month (Holm p = 0.001;
+  auction-bootstrap CI [99, 457]), final test $393.4 (auction p < 0.001). `tcc_struct_trailing` and
+  `tcc_struct_blend_illiquid` fail on the development set (Holm p = 0.27; illiquid nodal paths: $164.6, path-bootstrap CI
+  [-0.3, 337], auction p = 0.13).
+- **The declared test is not discriminating, so that pass is not an edge.** Realized payoffs exceeded clearing prices on average
+  (mean y - c +$172 per MW-month on BOP, +$336 centralized; medians -$17 and +$29: heavy tails), so shuffling the pricer's
+  edge across paths, or buying every path, also earns money: shuffled-edge P&L $113 (development), buy-everything $159. The
+  declared "null that must fail" therefore did not fail on the primary P&L test (my declaration omitted this; I did not change
+  the verdict rule, I report it as a flaw). The shuffle test of selection skill (permutation p) is the discriminating one:
+  seasonal 0.001 (development) and 0.010 (final); trailing 0.999 (worse than random buying) and 0.001; illiquid 0.106 and 0.026.
+- **Against the baselines (post-hoc, descriptive):** the same buy rule driven by last year's same-dates realized payoff
+  (persistence) earns $260 (development) and $404 (final) against seasonal's $262 and $394; the paired difference is +$2.0
+  (p = 0.065 over paths, 0.25 over auctions) and -$5.1 (p = 0.87). Climatology-driven buying does no better than buying
+  everything in development ($91 vs $159). Squared-error DM: seasonal is better than persistence in development (p < 0.001)
+  but not in the final set (p = 0.26), not better than the market price (p = 0.41; worse in the final set), and worse than
+  climatology in development (p = 0.96). The pricers' gap to the price carries information (slope of realized gap on claimed
+  gap 0.39, t = 3.6 development; 0.25, t = 2.5 final) but none beats the clearing price as a point forecast.
+- **Illiquid nodal paths (the literature's claim):** 5,320 development path-periods; the blend's rule P&L is $134 against $230
+  for persistence and $175 for buying everything; permutation p = 0.11. No support here for a structural edge on illiquid
+  paths; the earlier NYISO evidence (2006-2015, Leslie) is not contradicted, because the rest of the sample is a different era.
+- **Verdict: no edge yet.** Structure adds nothing measurable beyond same-season persistence, and nothing beats the auction
+  price on forecast error. Not adopted; there is no pricer to wire into a strategy.
+- Limits: awarded paths only (the set is known at clearing, not before); mean-only pricing (path risk is not priced); the 7-day
+  information lag and the 2% + $0.50 cost are assumptions (cost sensitivity at 0% and 5% is in the page, conclusions unchanged);
+  the newest auctions (anything paying after 2025-09-30, including the 2025-26 and 2026 capability periods) are excluded
+  because the holdout stays locked; centralized rounds are only 28 periods, so the final test set is all BOP.
+- Open (research log): shrink the pricer's gap toward the price (slope 0.4); regime features (gas spreads, outage schedule
+  vs the auction date); short side and sells of previously bought TCCs; BOP vs centralized liquidity.
+
 ## M7
 Single holdout evaluation, freeze signal v1.

@@ -1,4 +1,4 @@
-"""Typed read-only loaders for the warehouse and the experiments registry (the edge of the pipeline).
+"""Typed read-only loaders for the warehouse and the curated TCC tables (the edge of the pipeline).
 
 Pure modules (structural model, TCC pricer) take DataFrames; the CLI/runner call loaders like these to get them.
 """
@@ -9,7 +9,6 @@ from collections.abc import Sequence
 import duckdb
 import pandas as pd
 
-from lmpsignal import registry
 from nyiso.config import CURATED, DB_PATH
 from nyiso.ingest.tcc import TCC_KEYS
 
@@ -24,12 +23,6 @@ def warehouse_df(sql: str, params: Sequence = (), **tables: pd.DataFrame) -> pd.
         return con.execute(sql, list(params)).df()
     finally:
         con.close()
-
-
-def experiments_df(sql: str, params: Sequence = ()) -> pd.DataFrame:
-    """Run a read-only query on the experiments registry (retries while another process holds the lock)."""
-    with registry.connect(read_only=True) as con:
-        return con.execute(sql, list(params)).df()
 
 
 def tcc_df(sql: str, params: Sequence = ()) -> pd.DataFrame:

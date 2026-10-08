@@ -16,6 +16,9 @@ Status: `open` (not started), `tried` (result recorded), `blocked` (needs data o
 | Interface utilization features (flow / limit, DA vs RT limit changes) | Physically closest driver of binding | Not tried; `interface_flows_hourly` exists | Feature work in the structural model | open |
 | Constraint rename mapping | Constraint keys change names over time; catalog treats them as new | Known gap in `structural/constraints.py` | Manual/heuristic mapping | open |
 | Joint simulation of co-binding constraints for quantiles | Constraints co-bind; independent hurdles mis-state tails | Research note (congestion_nodal.md) | Moderate | open |
+| Shrink the TCC pricer's gap toward the auction price | M9: realized-minus-price gap loads 0.4 on the pricer's claimed gap (t = 3.6), so the signal is real but noisy | M9 result (docs/experiments/tcc_pricer.md) | New declared milestone; weights fitted walk-forward | open |
+| TCC regime features: gas spreads, outage schedule at the auction date | Potomac SOM: unexpected gas-spread and outage regimes drive TCC P&L; the pricer sees only last year's | M9: the market price beats every history-based pricer on squared error | Needs a gas-spread source (see above) and the P-14B archive | open |
+| TCC pricing: risk (path payoff variance), sells of held TCCs, BOP vs centralized liquidity | M9 prices means only and buys only | M9 limits | Moderate; needs award-volume and bid-level (masked bid) data | open |
 | Congestion regime probabilities as features | Markov chain over patterns fails (4,655 sets / 8,760 h); probabilities may not | Research note | Moderate | open |
 | Outage-to-constraint mapping v2: equipment aliases, onset-specific features | Name matching misses alias stations (STONYRDG vs STONYRGE) | M3 result: `struct_cong_out` not adopted | Small, but low expected value until P-14B exists | tried (2026-10-02, no gain) |
 
@@ -53,7 +56,7 @@ Status: `open` (not started), `tried` (result recorded), `blocked` (needs data o
 | Monthly norm with recent-year weights or a level adjustment (M5 follow-up) | `m5_norm` weights 2015–2020 equally; missed winter 2025–26 by ~60% | M5 check: `m5_lastyear` 11.3 vs norm 22.2 total CRPS on 2025-10..2026-09 | Post-processing over stored M5 forecasts or one declared run | open |
 | Gas forward curve for the heat-rate anchor (M5) | Spot gas at the cutoff is a poor forecast of gas months ahead | `m5_anchor` loses to the norm (13.6 vs 10.2) mostly after the 2022 gas spike | Free NYMEX series ended 2024-04; CME settlements / paid data | blocked (data) |
 | EIA-923 / CEMS bid stack, masked offers (M5) | Structural anchor for supply shifts | Not attempted in M5 | Ingest EIA-923, CEMS and NYISO masked bids (3-month lag) | open |
-| RT monthly averages, hourly shapes, nodes and TCC path values (M5 scope) | TCC valuation needs node-pair congestion over a month or a capability period | M5 covers zonal DA total and congestion only; TCC path values picked up as M9 (declared 2026-10-08, ROADMAP) | RT averages and hourly shapes stay open | open (TCC paths: M9 declared) |
+| RT monthly averages, hourly shapes, nodes and TCC path values (M5 scope) | TCC valuation needs node-pair congestion over a month or a capability period | M5 covers zonal DA total and congestion only; TCC path values picked up as M9 (declared 2026-10-08, ROADMAP) | RT averages and hourly shapes stay open | tried (TCC paths: M9, no edge over persistence; RT averages and hourly shapes remain open) |
 | Horizon extension (M5): bid-stack anchor, seasonal norms | Needed for TCC / monthly products | Roadmap | Large | tried (M5: seasonal norm adopted) |
 
 ## Infrastructure
