@@ -129,6 +129,8 @@ def backtest_rows(w: pd.DataFrame, folds: list[cv.Fold], kind: Kind, independent
     rows = []
     for fi, f in enumerate(folds):
         te = wp[(wp["delivery_date"] >= pd.Timestamp(f.test_start)) & (wp["delivery_date"] < pd.Timestamp(f.test_end))]
+        if te.empty:                                                           # fold 1: signal v1 stored no quantiles
+            continue
         rho = {} if independent else fold_rho(wp, pd.Timestamp(f.train_end))
         rows.append(price_rows(te, rho, kind, k, np.random.default_rng([seed, fi]), cost).assign(fold=f.name))
     return pd.concat(rows, ignore_index=True)
