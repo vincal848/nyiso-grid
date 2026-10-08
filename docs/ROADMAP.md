@@ -200,6 +200,26 @@ Code: `scenarios.py` (pure), `scenario_run.py` (loading / logging), `lmp scen`, 
 - **Not attempted** (budget): QRA / LQRA, isotonic distributional regression, conformal ensemble; they stay open in the
   research log. Not modelled: dependence across hours or zones (a TCC path price needs it).
 
+### M4 distributional calibration result (2026-10-08): Gaussian-copula scenarios adopted for pricing; tail splice and empirical copula not adopted
+Budget: 3 full runs declared, **4 used** (an overrun of one): `scen_gauss-20261008T051859-fa3c2f`,
+`scen_emp-20261008T052125-7ee649`, `rt_gpd_tail-20261008T052234-889af7` (failed: `save_fold` on fold 1, which has no
+quantiles, raised before any result was written; marked failed) and its fix `rt_gpd_tail-20261008T052615-889af7`.
+Benchmark `scen_indep-20261008T051507-38fd3f` (not budgeted). Details: `docs/experiments/m4_scenarios.md`.
+- **Joint DA/RT scenarios.** DA - RT spread CRPS, folds 2..36, internal zones, vs independent draws (10.47): `scen_gauss`
+  10.26 (-2.0%, Holm p < 1e-9; -2.1% without 2025-06-24), `scen_emp` 10.83 (+3.5%, worse). The Gaussian copula passes the
+  declared rule and is the sampler for the DART and TCC pricers; the empirical copula is not adopted. The fitted DA/RT
+  rank correlation is 0.37-0.40 per zone from the trailing year, against 0.29-0.35 realized in the scored months: the
+  dependence is weaker than its history says, so the copula is slightly too strong. The synthetic checks recover a
+  planted rho = 0.6 and find none in independent data (tests). Independent draws are overdispersed (80% band holds 88.5%
+  of outcomes), Gaussian 85%, empirical 82%, but the empirical copula still loses on CRPS.
+- **GPD tail splice** (RT total vs `combo3_eq_aci`): CRPS -0.17% (DM p = 0.13), spike-hour CRPS +0.21% (p = 0.97); the q99
+  miss rate improves from 1.46% to 1.23% but the q95 miss rate worsens from 5.68% to 5.92%. Not adopted (both CRPS
+  conditions fail). Signal v1 is unchanged.
+- Not run (budget): QRA / LQRA, isotonic distributional regression, conformal ensemble (research log).
+- Limits: rows are zone-hours with no dependence across hours or zones; the spread CRPS gain is small because the DA and
+  RT marginals already carry most of the spread's width. `positions_v2` still uses its own Pearson rho; switching the DART
+  rule to these samples is a new declared change, not part of M4.
+
 ## M4: probabilistic combination (evidence: strong for DA, European)
 QRA / LQRA over the member pool + isotonic distributional regression + conformal ensemble; EVT (GPD)
 tail splice above the ~0.9 conditional quantile; joint DA/RT samples so the DA−RT spread keeps its

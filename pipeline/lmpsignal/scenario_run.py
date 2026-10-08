@@ -38,6 +38,8 @@ def _log_folds(name: str, config: dict, df: pd.DataFrame, folds: list[cv.Fold], 
         if part.empty or not log:
             continue
         s = part[part["y"].notna() & part[QCOLS].notna().all(axis=1)]
+        if s.empty:                                  # fold 1 has no quantiles: nothing to score
+            continue
         keys = ["market", "component"]
         scores = pd.concat([score_table(s, keys).assign(zone="ALL"), score_table(s, [*keys, "zone"])])
         registry.save_fold(run_id, f.name, part, scores)
@@ -98,7 +100,7 @@ def report() -> str:
     tail calibration vs signal v1."""
     runs = completed_runs(["scen_indep", "scen_gauss", "scen_emp", "rt_gpd_tail", SIGNAL_V1, "spike_full"])
     out: list[str] = []
-    ex = lambda idx: idx != SPIKE_DAY.date()
+    ex = lambda idx: pd.to_datetime(idx) != SPIKE_DAY
     spread = {m: runs[m] for m in ("scen_indep", "scen_gauss", "scen_emp") if m in runs}
     if len(spread) == 3:
         out += ["## Joint DA/RT scenarios: DA - RT spread, CRPS vs independent draws (folds 2..36)", ""]

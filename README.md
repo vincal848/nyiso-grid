@@ -172,7 +172,8 @@ Done: the warehouse and dashboard, then the forecasting milestones (details in `
   the January 2026 shock (`docs/SIGNAL_V1.md`).
 - **Later milestones, each with a declared budget; none replaced signal v1:**
   - M3b RT spike model: −12% CRPS in spike hours, but the pooled gain was not significant.
-  - M4 robust combination: not adopted.
+  - M4 robust combination: not adopted. M4 distributional step: a Gaussian-copula joint DA/RT sampler beats independent
+    draws on spread CRPS (−2%) and is kept for the DART/TCC pricers; the GPD tail splice and an empirical copula were not adopted.
   - M6 distributional neural network ensemble: not adopted. It fails in cold-weather shock months.
 - **M5 monthly DA forecasts** (zones, on/off-peak, 1–6 months ahead): a seasonal norm beat a gas × heat-rate
   anchor, which has no gas forward curve to work with.

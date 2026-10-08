@@ -79,6 +79,7 @@
 - `uv run lmp risk [--date D]` / `uv run lmp positions [--date D]` / `uv run lmp paper` — live spike risk, DART v2 paper
   positions, paper-trading track record
 - `uv run lmp m5 <models> [--window validation|holdout]` / `uv run lmp monthly` — M5 monthly DA products (runs / live)
+- `uv run lmp scen <indep|gauss|emp|gpd>` / `uv run lmp scen-report` — M4 joint DA/RT scenarios and GPD tail splice over signal v1 (validation) / results page
 - `uv run lmp shadow [--date D] [--score]` — M8 Chronos-2 live shadow forecast / its live record vs signal v1
 - `uv run python scripts/daily.py` — daily job: data refresh, build, panel, forecast, nodes, risk, positions, monthly, shadow (04:30 ET)
 - `uv run pytest` and `uv run ruff check src pipeline scripts tests` (CI runs both)
