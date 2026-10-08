@@ -112,7 +112,7 @@ def evaluate(run_id: str, folds: list[cv.Fold] | None = None) -> pd.DataFrame:
 def live(d: date, signal: str) -> pd.DataFrame:
     from datetime import datetime
 
-    from lmpsignal.live import month_fold
+    from lmpsignal.cv import month_fold
 
     with registry.connect(read_only=True) as con:
         zf = con.execute("""SELECT delivery_date, ts_utc, zone, market, component, mean FROM live_forecasts

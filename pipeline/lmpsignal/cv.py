@@ -60,6 +60,13 @@ def folds(window_days: int | None = None, start: date = VALIDATION_START, end: d
     return out
 
 
+def month_fold(d: date) -> Fold:
+    """The validation rule for the month containing `d`: expanding window, 7-day embargo (used live and for any month)."""
+    m = d.replace(day=1)
+    nxt = (m + timedelta(days=32)).replace(day=1)
+    return Fold(f"{m:%Y-%m}", BURN_IN_START, m - timedelta(days=EMBARGO_DAYS), m, nxt)
+
+
 def inner_folds(outer: Fold, n: int = 3, embargo_days: int = EMBARGO_DAYS) -> list[Fold]:
     """Nested folds for hyperparameter selection: the last n months inside the outer fold's training data."""
     last = date(outer.train_end.year, outer.train_end.month, 1)

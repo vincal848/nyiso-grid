@@ -35,7 +35,7 @@ import numpy as np
 import pandas as pd
 
 from lmpsignal import cv, registry
-from lmpsignal.config import BURN_IN_START, EMBARGO_DAYS, FEATURES_DB, INTERNAL_ZONES, VALIDATION_END
+from lmpsignal.config import BURN_IN_START, EMBARGO_DAYS, FEATURES_DB, INTERNAL_ZONES, OOS_SCHEMA, VALIDATION_END
 from nyiso.config import DB_PATH
 
 BASE_T = 18.3
@@ -244,10 +244,6 @@ def oos_folds(first: str = "2022-01", end=VALIDATION_END) -> list[cv.Fold]:
         out.append(cv.Fold(f"{m:%Y-%m}", BURN_IN_START, (m - timedelta(days=EMBARGO_DAYS)).date(), m.date(), nxt.date()))
         m = nxt
     return out
-
-
-OOS_SCHEMA = """CREATE TABLE IF NOT EXISTS load_fix_oos (ts_utc TIMESTAMPTZ, zone VARCHAR, delivery_date DATE,
-                load_fix DOUBLE, r_hat DOUBLE, run_id VARCHAR)"""
 
 
 # First month 2022-10: the model needs a full seasonal cycle of training data. Started at 2022-01 it was worse than

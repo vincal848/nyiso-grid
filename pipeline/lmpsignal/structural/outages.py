@@ -23,7 +23,6 @@ import re
 import numpy as np
 import pandas as pd
 
-from lmpsignal.structural import constraints as cs
 from nyiso.config import TZ
 
 _SCH_SKIP = {"NYISO", "NY", "LIMIT", ""}
@@ -72,17 +71,6 @@ def constraint_tokens(key: str) -> tuple[set[str], set[str]]:
             first = re.split(r"[\s(#&_]", body, maxsplit=1)[0]
             ctg = {_norm(first)} - {""}
     return fac, ctg
-
-
-def load_lists(start, end) -> pd.DataFrame:
-    """DAM outage lists for market days [start, end): list_day (local date), equipment, out/in (UTC)."""
-    con = cs._con()
-    df = con.execute("""SELECT CAST(ts_local AS DATE) AS list_day, equipment, sched_out_utc, sched_in_utc
-                        FROM da_sched_outages WHERE ts_local >= ? AND ts_local < ?""",
-                     [str(pd.Timestamp(start).date()), str(pd.Timestamp(end).date())]).df()
-    con.close()
-    df["list_day"] = pd.to_datetime(df["list_day"])
-    return df
 
 
 def hour_starts_utc(days: pd.DatetimeIndex) -> np.ndarray:

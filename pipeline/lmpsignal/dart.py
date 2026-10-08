@@ -137,8 +137,8 @@ def _rho(resid: pd.DataFrame, end: pd.Timestamp) -> pd.Series:
 def positions_v2(signal_run: str, spike_run: str, lags: pd.DataFrame | None = None) -> pd.DataFrame:
     """DART v2: distribution means (q05..q95 average), RT mean mixed with the spike member, DA/RT residual correlation
     over the 365 days before each month (as of the fold's training end). See docs/ROADMAP.md, M4 declaration."""
+    from lmpsignal.cv import month_fold
     from lmpsignal.evaluate import QCOLS
-    from lmpsignal.live import month_fold
 
     inner = QCOLS[1:-1]                                            # q05..q95
     d = duckdb.sql(f"""SELECT delivery_date, ts_utc, zone, hour_local, market, mean, {', '.join(QCOLS)}, y
@@ -239,8 +239,8 @@ def live_v2(d, signal: str | None = None) -> pd.DataFrame:
     from datetime import datetime
 
     from lmpsignal import registry
+    from lmpsignal.cv import month_fold
     from lmpsignal.evaluate import QCOLS
-    from lmpsignal.live import month_fold
     from lmpsignal.presets import SIGNAL_V1
 
     signal = signal or SIGNAL_V1
