@@ -109,6 +109,27 @@
     </section>
     <!-- ================= SIGNAL (forecasting pipeline outputs) ================= -->
     <section id="tab-signal" class="tab-panel">
+      <div class="card">
+        <div class="card-head"><h2 id="live-title">Live forecast (signal v1)</h2>
+          <div class="toolbar" style="margin:0">
+            <div class="seg" id="live-mkt"><button data-v="da" class="active">DA</button><button data-v="rt">RT</button></div>
+            <label>Delivery day <select id="live-date"></select></label>
+            <label>Zone <select id="live-zone"></select></label>
+            <label>Component <select id="live-comp"><option>total</option><option>congestion</option><option>energy</option><option>loss</option></select></label>
+          </div>
+        </div>
+        <div id="c-live" class="chart"></div>
+        <div class="muted small" id="live-src">No live forecasts yet: run <code>uv run python scripts/daily.py</code>.</div>
+      </div>
+      <div class="grid-2">
+        <div class="card"><div class="card-head"><h2>Live track record: daily total-price MAE and 90% coverage</h2></div><div id="c-track" class="chart"></div></div>
+        <div class="card">
+          <div class="card-head"><h2 id="live-nodes-title">Nodes: highest and lowest forecast price</h2></div>
+          <div class="table-wrap"><table id="t-live-nodes"><thead><tr>
+            <th>Node</th><th>Zone</th><th class="num">Total $/MWh</th><th class="num">Congestion</th>
+          </tr></thead><tbody></tbody></table></div>
+        </div>
+      </div>
       <div class="toolbar">
         <div class="seg" id="sig-mkt"><button data-v="da" class="active">DA</button><button data-v="rt">RT</button></div>
         <label>Fold <select id="sig-fold"></select></label>

@@ -9,6 +9,9 @@
 - `pipeline/lmpsignal/` — LMP forecasting signal (phase 2). Reads the warehouse read-only; writes only
   `data/features.duckdb`, `data/experiments.duckdb`, `data/experiments/` and `data/structure.duckdb`.
   Must not import `nyiso.api`. The dashboard API may *read* those files (never import pipeline code).
+  The frozen signal (`docs/SIGNAL_V1.md`, `pipeline/lmpsignal/presets.py`) runs live via `lmp forecast`; its outputs go
+  to experiments.duckdb (`live_forecasts`, `live_node_forecasts`) and data/experiments/live/. Ingestion for the daily
+  job is orchestrated outside the pipeline by scripts/daily.py.
 - Keep everything a model computes: predictions with quantiles per fold, and model internals as
   artifacts (`registry.save_artifact`; see `docs/STRUCTURE.md`). Metrics are derived, never the only record.
 - DART/TCC pricing is a later phase: build and validate the LMP signal first.
@@ -45,9 +48,13 @@
 - Every model run goes through `runner.run` so it lands in the registry; compare models with `lmp report`.
   Never delete runs: every configuration tried counts toward the Deflated Sharpe Ratio's trial number.
   Each run logs config hash, code fingerprint, git commit, panel-data fingerprint, environment and duration.
+- Training is bounded by the protocol in `docs/ROADMAP.md` ("Training protocol"): signal v1's candidate pool is
+  closed; later model milestones declare a candidate list and a full-run budget (default 3) before starting.
+  Do not start new variants or retrains outside a declared budget; log the idea in `docs/RESEARCH_LOG.md`.
 - `lmp report` includes overfitting diagnostics (PSR, DSR, MinTRL, Holm/BHY-adjusted DM, SPA/Reality Check,
   PBO via CSCV) computed on daily forecast skill vs benchmarks. They are descriptive: no model is accepted or
-  rejected on them until an explicit selection rule is agreed.
+  rejected on them except through the selection rule in `docs/ROADMAP.md` (lowest pooled total CRPS, gated by
+  Holm-adjusted DM vs `persist_da_d1` and PBO < 0.5; DSR/SPA reported only).
 
 ## Commands
 - `uv run nyiso backfill [--datasets a,b] [--start 2021-10] [--end 2026-09]`
@@ -61,4 +68,8 @@
 - `uv run lmp train <lear|lear2|gbm_l1|gbm_l2> [--smoke N]` — validate a model (smoke = first N folds, not logged)
 - `uv run lmp graphs` — compile structural artifacts into data/structure.duckdb (dashboard Signal tab)
 - `uv run lmp post <preset>` — clip / combine / calibrate stored predictions (seconds to minutes, logged as a trial)
+- `uv run lmp m7 <signal>` — the single holdout evaluation (needs `LMP_UNLOCK_HOLDOUT=I_AM_RUNNING_M7`; done for v1)
+- `uv run lmp forecast [--date D]` / `uv run lmp nodes [--date D]` — live forecast of the frozen signal (zones / nodes)
+- `uv run lmp dart` — DART prototype backtest on stored forecasts -> docs/experiments/dart_prototype.md
+- `uv run python scripts/daily.py` — daily job: data refresh, build, panel, forecast, nodes (scheduled 04:30 ET)
 - `uv run pytest`

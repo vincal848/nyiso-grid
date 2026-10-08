@@ -10,7 +10,7 @@ import pandas as pd
 
 from lmpsignal.config import COMPONENTS, MARKETS
 from lmpsignal.models.base import Model, to_long
-from lmpsignal.panel import FEATURES
+from lmpsignal.panel import FEATURE_SETS
 
 ENERGY_ZONE = "CAPITL"
 BASE_PARAMS = dict(learning_rate=0.05, num_leaves=63, min_child_samples=200, subsample=0.8, subsample_freq=1,
@@ -19,20 +19,22 @@ BASE_PARAMS = dict(learning_rate=0.05, num_leaves=63, min_child_samples=200, sub
 
 class GBM(Model):
     def __init__(self, objective: str = "l1", n_estimators: int = 500, window_days: int | None = 728,
-                 n_jobs: int = 16, **params):
+                 n_jobs: int = 16, feature_set: str = "v1", **params):
         self.objective = objective
         self.n_estimators = n_estimators
         self.window_days = window_days
         self.n_jobs = n_jobs
         self.params = {**BASE_PARAMS, **params}
-        self.name = f"gbm_{objective}"
+        self.name = f"gbm_{objective}" + ("" if feature_set == "v1" else f"_{feature_set}")
         self.models: dict[tuple[str, str], lgb.LGBMRegressor] = {}
-        self.features = [f for f in FEATURES]
+        self.feature_set = feature_set
+        self.features = list(FEATURE_SETS[feature_set])
 
     def config(self) -> dict:
         return {"model": "LightGBM", "objective": self.objective, "n_estimators": self.n_estimators,
                 "train_window_days": self.window_days or "all", "params": self.params,
-                "features": "panel FEATURES + zone(categorical)", "refit": "per fold (monthly)"}
+                "features": "panel FEATURES + zone(categorical)", "refit": "per fold (monthly)",
+                **({"feature_set": self.feature_set, "feature_list": self.features} if self.feature_set != "v1" else {})}
 
     def _X(self, df: pd.DataFrame) -> pd.DataFrame:
         X = df[self.features].astype(float)

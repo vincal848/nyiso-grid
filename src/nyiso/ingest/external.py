@@ -11,7 +11,7 @@ from __future__ import annotations
 import io
 import json
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 
@@ -31,6 +31,10 @@ EXTERNAL = {d.key: d for d in [
     ExternalDataset("weather_obs", "Hourly weather observations at NY stations (NOAA GHCNh)", "ts_utc"),
     ExternalDataset("weather_fcst", "Hourly GFS temperature forecasts by lead time, 0-7 days (Open-Meteo "
                     "previous-runs API; research use only)", "ts_utc"),
+    ExternalDataset("weather_hrrr", "NOAA HRRR 06z day-ahead forecasts aggregated to NYISO zones (public domain)",
+                    "ts_utc"),
+    ExternalDataset("outage_schedule", "NYISO forward transmission outage schedule (P-14B), archived daily snapshots",
+                    "snapshot_utc"),
 ]}
 
 
@@ -143,3 +147,49 @@ def weather_fcst(start: date, end: date, refresh_current: bool = True) -> pd.Dat
     lead = pd.to_timedelta(fc["lead_days"] * 24, unit="h")
     fc["available_utc"] = fc["ts_utc"] - lead + MODEL_LATENCY
     return fc[["ts_utc", "station", "lead_days", "temp_c", "available_utc"]]
+
+
+# ----------------------------------------------------------------------------- NYISO forward outage schedule (P-14B)
+
+_OUTAGE_SCHEDULE = "https://mis.nyiso.com/public/csv/os/outage-schedule.csv"
+
+
+def outage_schedule_snapshot() -> None:
+    """Save the current P-14B outage schedule to the raw cache. NYISO publishes only the current file (no archive),
+    so history exists only from the first snapshot on; scripts/daily.py takes one every morning."""
+    now = datetime.now(timezone.utc)
+    content = http_get(_OUTAGE_SCHEDULE)
+    if content is None:
+        return
+    path = RAW / "outage_schedule" / f"{now:%Y%m%dT%H%M}Z.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+
+
+def outage_schedule() -> pd.DataFrame:
+    """All archived P-14B snapshots: one row per (snapshot, outage record). available_utc = snapshot time."""
+    frames = []
+    for f in sorted((RAW / "outage_schedule").glob("*Z.csv")):
+        snap = pd.Timestamp(datetime.strptime(f.stem, "%Y%m%dT%H%MZ"), tz="UTC")
+        raw = pd.read_csv(f, dtype=str, skipinitialspace=True)
+        raw.columns = [c.strip() for c in raw.columns]
+        df = pd.DataFrame({
+            "snapshot_utc": snap,
+            "ptid": pd.to_numeric(raw["PTID"], errors="coerce").astype("Int64"),
+            "outage_id": raw["Outage ID"].str.strip(),
+            "equipment": raw["Equipment Name"].str.strip(),
+            "equipment_type": raw["Equipment Type"].str.strip(),
+            "sched_out_utc": _et_to_utc(pd.to_datetime(raw["Date Out"] + " " + raw["Time Out"], format="%m/%d/%Y %H:%M",
+                                                       errors="coerce")),
+            "sched_in_utc": _et_to_utc(pd.to_datetime(raw["Date In"] + " " + raw["Time In"], format="%m/%d/%Y %H:%M",
+                                                      errors="coerce")),
+            "called_in": raw["Called In"].str.strip(),
+            "status": raw["Status"].str.strip(),
+            "status_date_utc": _et_to_utc(pd.to_datetime(raw["Status Date"], format="%m-%d-%Y %H:%M", errors="coerce")),
+            "message": raw.get("Message", pd.Series(dtype=str)).str.strip(),
+        })
+        df["available_utc"] = snap
+        frames.append(df)
+    cols = ["snapshot_utc", "ptid", "outage_id", "equipment", "equipment_type", "sched_out_utc", "sched_in_utc",
+            "called_in", "status", "status_date_utc", "message", "available_utc"]
+    return pd.concat(frames, ignore_index=True)[cols] if frames else pd.DataFrame(columns=cols)

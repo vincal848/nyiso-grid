@@ -21,7 +21,7 @@ def test_every_dataset_is_documented():
         if ds.snapshot_keys:
             assert set(ds.snapshot_keys) | {"first_seen_utc", "last_seen_utc"} <= set(TABLES[key].columns), key
             continue
-        cols = set(ds.columns.values()) | {"ts_utc", "ts_local"}
+        cols = {f"{c}_utc" if c in ds.datetime_cols else c for c in ds.columns.values()} | {"ts_utc", "ts_local"}
         if ds.wide:
             cols |= {"zone", "load_forecast_mw", "issue_date"}
         assert cols <= set(TABLES[key].columns), key

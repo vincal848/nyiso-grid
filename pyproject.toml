@@ -17,6 +17,7 @@ dependencies = [
     "xlrd>=2.0.1",
     "scikit-learn>=1.5",
     "lightgbm>=4.3",
+    "numcodecs>=0.13",
 ]
 
 [project.optional-dependencies]

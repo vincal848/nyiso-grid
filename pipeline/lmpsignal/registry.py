@@ -39,13 +39,19 @@ ALTER TABLE runs ADD COLUMN IF NOT EXISTS error VARCHAR;
 
 
 def code_fingerprint() -> str:
-    """sha256 over every .py/.sql file of the warehouse and pipeline code (path + content)."""
+    """sha256 over every .py/.sql file of the warehouse and pipeline code (path + content).
+
+    Platform-independent: POSIX relative paths in POSIX sort order, CRLF normalized to LF, so a commit
+    hashes the same on Windows and in CI. Runs logged before 2026-10-02 used OS-native paths (Windows
+    backslashes); their fingerprints are not comparable with later ones."""
     h = hashlib.sha256()
-    for base in (ROOT / "src" / "nyiso", ROOT / "pipeline" / "lmpsignal"):
-        for f in sorted(base.rglob("*")):
-            if f.suffix in (".py", ".sql") and "__pycache__" not in f.parts:
-                h.update(str(f.relative_to(ROOT)).encode())
-                h.update(f.read_bytes())
+    files = sorted((f.relative_to(ROOT).as_posix(), f)
+                   for base in (ROOT / "src" / "nyiso", ROOT / "pipeline" / "lmpsignal")
+                   for f in base.rglob("*")
+                   if f.suffix in (".py", ".sql") and "__pycache__" not in f.parts)
+    for rel, f in files:
+        h.update(rel.encode())
+        h.update(f.read_bytes().replace(b"\r\n", b"\n"))
     return h.hexdigest()[:16]
 
 

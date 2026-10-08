@@ -27,7 +27,10 @@ def _md(df: pd.DataFrame, floatfmt: str = "{:.3f}") -> str:
 
 def _runs(models: list[str] | None) -> dict[str, str]:
     with registry.connect(read_only=True) as con:
-        rows = con.execute("""SELECT model, arg_max(run_id, created_utc) FROM runs WHERE status = 'done'
+        # validation scoreboard only: M7 holdout runs (<name>_m7) are reported separately
+        rows = con.execute("""SELECT model, arg_max(run_id, created_utc) FROM runs r WHERE status = 'done'
+                                AND NOT suffix(model, '_m7')
+                                AND EXISTS (SELECT 1 FROM scores s WHERE s.run_id = r.run_id AND s.market IN ('da', 'rt'))
                               GROUP BY model ORDER BY model""").fetchall()
     return {m: r for m, r in rows if models is None or m in models}
 
@@ -214,6 +217,9 @@ def _runs_section(runs: dict[str, str]) -> list[str]:
                              FROM runs WHERE run_id IN ({ids}) ORDER BY model""").df()
         tried = con.execute("SELECT status, count(*) AS runs, count(DISTINCT config_hash) AS configs FROM runs GROUP BY 1").df()
     out = ["## Runs and reproducibility", "", _md(df.astype(object).where(df.notna(), "—")), ""]
+    if df["git_commit"].isna().any():
+        out += ["> git_commit “—”: the run predates the repository's first commit (2026-09-28 15:25 ET), so it "
+                "is identified by code_fingerprint only; no commit reproduces it exactly.", ""]
     for col, what in (("code_fingerprint", "code"), ("data_fingerprint", "panel data")):
         vals = df[col].dropna().unique()
         if len(vals) > 1:
@@ -251,7 +257,14 @@ ARTIFACTS = {
     "node_shift_factors": "Generator-node x constraint sensitivity (ridge on nodal -MCC); the node-constraint graph.",
     "node_fit": "In-window R² of each node's congestion explained by the top-K constraints.",
     "blend_weights": "Per-zone weights combining the structural forecast with persistence (and the intercept).",
-    "constraint_forecasts": "Per constraint and delivery hour: P(bind), shadow price if binding, forecast, actual.",
+    "constraint_forecasts": "Per constraint and delivery hour: P(bind), shadow price if binding, forecast, actual. "
+                            "With the outage map (`struct_cong_out`) also `out_fac`, `out_ctg` (name-matched outages "
+                            "expected out on the facility / contingency side), `lift_max`, `lift_min`.",
+    "outage_constraint_lift": "`struct_cong_out` only. Per (constraint, equipment) pair with enough support in the "
+                              "training window: days expected out, binding days among them, base binding rate, shrunk "
+                              "log-lift. Fit on training days only.",
+    "bind_feature_importance": "`struct_cong_out` only. LightGBM gain per feature of the P(bind) classifier, per market "
+                               "and fold.",
 }
 
 

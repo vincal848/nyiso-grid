@@ -11,6 +11,37 @@ phase; this phase builds the probabilistic LMP signal._
 - **M2 (first pass)**: LEAR and LightGBM. DA total MAE: LEAR 6.30 vs 7.97 for yesterday's DA (−21%).
   RT: LightGBM-L1 −8%. Neither beats persistence on congestion or in the top-5% RT spike hours.
   90%/98% intervals cover 88% and 95–96%.
+- **M2.5**: post-processing layer (`lmp post`: clip / combine / ACI over stored predictions), LEAR v2
+  (shared Gram matrix, time-ordered penalty, 56-day window, per-window outputs), cross-family combination,
+  adaptive conformal intervals, spike/normal splits and Kupiec/Christoffersen tests. Best:
+  `combo3_eq_aci` (clipped LEAR + LightGBM-L1, equal weights, ACI): DA total CRPS 4.43 vs 6.51 for
+  yesterday's DA (beats it in 35 of 36 folds); RT total CRPS 10.75 vs 11.22, but the RT squared-error gain
+  is not significant (DM p = 0.18). 90% intervals now cover 90%; 98% intervals miss ~3% with clustered
+  misses (Christoffersen p ≈ 0), which is M4's job.
+- **M3 (first version)**: `struct_cong` / `struct_cong_l2`, a hurdle model per binding constraint without
+  outage information. `struct_cong` wins MAE on congestion but loses on RMSE/CRPS to LEAR v2; `struct_cong_l2`
+  is worse than persistence. RT congestion is still roughly tied with `zero_congestion` on CRPS.
+- **M3 outage step (2026-10-02): no congestion gain.** Ingested the DAM outage lists (P-54C; the RT
+  `sched_outages` feed only looks ~2.6 h ahead, useless at the D−1 issue) and mapped outages to constraints
+  (station-name match + cross-fitted binding lift). `struct_cong_out` improves binding log loss ~1% on six
+  diagnostic folds, but over 36 folds congestion is slightly *worse* than `struct_cong`: DA CRPS 3.135 vs
+  3.069 (RMSE 11.56 vs 10.89), RT CRPS 4.971 vs 4.919. On outage-onset constraint-hours it is worse than v1
+  (log loss +1.5% DA, +5.6% RT); the small gains come after outages end. Recent binding history carries
+  ~60% of P(bind) gain and already reflects long outages; the D−1 list cannot see outages starting on D.
+  Kept as an ensemble candidate, not adopted. A forward schedule (P-14B) must be archived from now on to
+  test planned-outage onsets.
+- **M3w step 1-2: HRRR weather and the weather-to-load correction (2026-10-02).** `weather_hrrr` (NOAA HRRR 06z
+  D−1, public domain, zone aggregates incl. convection) replaces nothing yet but is the licensed path off
+  Open-Meteo. `loadfix_gbm` predicts the error of the ISOLF D−2 forecast from the weather change since that
+  file. NYISO total over 36 folds: RMSE 538 MW vs 583 for debiased ISOLF D−2 (−8%) and 697 raw; MAPE 2.16% vs
+  2.34%. It recovers ~55% of the gap to the (unusable) debiased D−1 file (502 MW) and beats it in winter (432 vs
+  448). The calendar-only ablation (619 MW) shows the gain is weather, not level-bias learning. ISOLF runs up
+  to 13% below P-58B actuals with a seasonal pattern, so raw-ISOLF comparisons overstate any model.
+  Next (step 3): corrected load and load surprise as price-model features (OOS stacking table), then M3b.
+- **M7 (2026-10-05): signal v1 frozen and evaluated once.** `combo3_eq_aci` (selection rule, pooled CRPS 7.593).
+  Holdout total CRPS DA 9.75 vs 11.54 for yesterday's DA (−16%), RT 14.55 vs 19.56 (−26%); intervals calibrated;
+  DA RMSE worse than persistence because of January 2026. Details: `docs/SIGNAL_V1.md`.
+- **Holdout data complete** (2026-10-02): warehouse and panel cover 2025-10-01..2026-09-30. Still locked.
 
 ## Metric decision (2026-09-28)
 Primary scores are **CRPS** (whole predictive distribution) and **RMSE** (conditional mean); MAE is
@@ -34,6 +65,24 @@ them from the registry, take seconds, and are logged as their own trials with pa
 4. **Adaptive conformal intervals** (ACI, Gibbs & Candès 2021) per zone × hour, updated only with
    outcomes known at issue time, replacing static residual quantiles.
 5. **Evaluation**: spike-hour vs normal-hour splits; Kupiec / Christoffersen coverage tests.
+
+## Training protocol (agreed 2026-10-05)
+Training is bounded: a fixed start and end per phase, not open-ended variant-and-retrain.
+
+1. **Signal v1 candidate pool is closed** after the queued runs of 2026-10-05 (`gbm_l1_v3`, `lear_wx` and the
+   post presets `gbm_l1_v3_aci`, `lear_wx_clip`, `lear_wx_clip_aci`, `combo3wx_eq_aci`). No new model families,
+   feature variants or full retrains for v1.
+2. **One extra post-processing candidate**, declared now: `assemble_v1_final`: congestion from `lear2_long_aci`,
+   energy and loss from the better (by pooled total CRPS) of `combo3wx_eq_aci` / `combo3_eq_aci`, then ACI.
+3. **Selection rule** (fixed before the final scoreboard is read): lowest total-price CRPS averaged over DA and RT
+   on the 36 folds, subject to (a) Holm-adjusted DM p < 0.05 vs `persist_da_d1` on CRPS in both markets and
+   (b) PBO < 0.5. Within 1% CRPS the simpler candidate wins. DSR / SPA are reported, not used.
+4. **Freeze and evaluate once (M7):** record the winner's config and git commit as signal v1, unlock the holdout,
+   run the frozen configuration on 2025-10..2026-09, report whatever comes out. Training for this phase ends.
+5. **Later model milestones** (M3b, M4, M6, ...) declare their candidate list and a maximum number of full runs
+   (default 3) before starting; smoke tests do not count. When the budget is spent, the milestone stops.
+
+Ideas that come up meanwhile go to `docs/RESEARCH_LOG.md`, not into another retrain.
 
 ## M3: structural congestion (evidence: strong theory, no published real-ISO horse race)
 Per-constraint hurdle model for the top 50–100 constraints: P(bind) (regularized logistic / GBM) ×

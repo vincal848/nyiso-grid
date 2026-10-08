@@ -110,7 +110,7 @@ def dedupe(df: pd.DataFrame, ds: Dataset) -> pd.DataFrame:
     if ds.snapshot_keys:
         keys = ["ts_utc", *ds.snapshot_keys]
     else:
-        keys = ["ts_utc", *ds.entity] + (["issue_date"] if ds.wide else [])
+        keys = ["ts_utc", *ds.curated_entity] + (["issue_date"] if ds.wide else [])
     return df.drop_duplicates(subset=keys, keep="last").reset_index(drop=True)
 
 

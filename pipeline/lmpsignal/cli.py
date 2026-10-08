@@ -12,7 +12,8 @@ def main():
 
 
 @app.command("panel")
-def panel_cmd():
+def panel_cmd(through: str = typer.Option(None, help="Also add feature-only rows for delivery days up to YYYY-MM-DD "
+                                                       "(live forecasting)")):
     """Build the point-in-time modeling panel and prove no feature uses post-issue data."""
     import time
 
@@ -22,7 +23,9 @@ def panel_cmd():
     from lmpsignal.config import FEATURES_DB
 
     t = time.time()
-    n = panel.build()
+    from datetime import date
+
+    n = panel.build(through=date.fromisoformat(through) if through else None)
     con = duckdb.connect(str(FEATURES_DB), read_only=True)
     leaks = panel.check_asof(con)
     typer.echo(f"panel: {n:,} rows in {time.time() - t:.1f}s")
@@ -52,9 +55,13 @@ MODELS = {
     "struct_cong": lambda: __import__("lmpsignal.structural.congestion", fromlist=["StructuralCongestion"]).StructuralCongestion(),
     "struct_cong_l2": lambda: __import__("lmpsignal.structural.congestion", fromlist=["StructuralCongestion"]).StructuralCongestion(
         blend_loss="l2", name="struct_cong_l2"),
+    "struct_cong_out": lambda: __import__("lmpsignal.structural.congestion", fromlist=["StructuralCongestion"]).StructuralCongestion(
+        outage_map=True, name="struct_cong_out"),
     "zero_congestion": lambda: __import__("lmpsignal.models.naive", fromlist=["ZeroCongestion"]).ZeroCongestion(),
     "gbm_l1": lambda: __import__("lmpsignal.models.gbm", fromlist=["GBM"]).GBM(objective="l1"),
     "gbm_l2": lambda: __import__("lmpsignal.models.gbm", fromlist=["GBM"]).GBM(objective="l2"),
+    "gbm_l1_v3": lambda: __import__("lmpsignal.models.gbm", fromlist=["GBM"]).GBM(objective="l1", feature_set="v3"),
+    "lear_wx": lambda: __import__("lmpsignal.models.lear", fromlist=["LEAR"]).LEAR(inputs="loadfix_hrrr"),
 }
 
 
@@ -78,28 +85,29 @@ def train(
     typer.echo(f"{model} -> {rid or '(smoke test, not logged)'} in {time.time() - t:.0f}s")
 
 
-POST_PRESETS = {
-    # name: (parent model names, steps)
-    "lear_clip": (["lear"], [{"op": "clip"}, {"op": "calibrate", "method": "oos_residual"}]),
-    "lear_clip_aci": (["lear"], [{"op": "clip"}, {"op": "calibrate", "method": "aci"}]),
-    "gbm_l1_aci": (["gbm_l1"], [{"op": "calibrate", "method": "aci"}]),
-    "combo_eq_aci": (["lear", "gbm_l1"], [{"op": "combine", "weights": "equal"}, {"op": "clip"},
-                                          {"op": "calibrate", "method": "aci"}]),
-    "combo_inv_aci": (["lear", "gbm_l1"], [{"op": "combine", "weights": "inv_mae"}, {"op": "clip"},
-                                           {"op": "calibrate", "method": "aci"}]),
-    "lear2_aci": (["lear2"], [{"op": "calibrate", "method": "aci"}]),
-    "combo2_eq_aci": (["lear2", "gbm_l1"], [{"op": "combine", "weights": "equal"}, {"op": "clip"},
-                                            {"op": "calibrate", "method": "aci"}]),
-    "combo2_inv_aci": (["lear2", "gbm_l1"], [{"op": "combine", "weights": "inv_mae"}, {"op": "clip"},
-                                             {"op": "calibrate", "method": "aci"}]),
-    # M2.5 follow-ups
-    "combo3_eq_aci": (["lear_clip", "gbm_l1"], [{"op": "combine", "weights": "equal"}, {"op": "clip"},
-                                                {"op": "calibrate", "method": "aci"}]),
-    "lear2_long_aci": (["lear2"], [{"op": "windows", "use": ["w364", "w728", "wall"]},
-                                   {"op": "calibrate", "method": "aci"}]),
-    "assemble_v1e_v2c_aci": (["lear_clip", "lear2"], [{"op": "assemble", "components": {
-        "energy": "lear_clip", "loss": "lear_clip", "congestion": "lear2"}}, {"op": "calibrate", "method": "aci"}]),
-}
+@app.command()
+def loadfix(
+    kind: str = typer.Argument(..., help="lin (classical per-zone ridge), gbm (LightGBM) or gbm_cal (ablation: no weather)"),
+    smoke: int = typer.Option(0, help="Run only the first N folds WITHOUT logging (not a trial)"),
+    oos: bool = typer.Option(False, help="Write month-by-month out-of-sample forecasts to load_fix_oos (panel feature)"),
+):
+    """Weather-to-load correction of the ISOLF D-2 forecast, scored on the validation folds."""
+    import time
+
+    from lmpsignal import cv, loadfix as lf, panel
+    from lmpsignal.config import VALIDATION_END
+
+    t = time.time()
+    p = panel.load(end=VALIDATION_END)
+    if oos:
+        rid = lf.build_oos(kind, p)
+        typer.echo(f"load_fix_oos <- {rid} in {time.time() - t:.0f}s; rebuild the panel (lmp panel) to join it")
+        return
+    rid = lf.run(kind, p, folds=cv.folds()[:smoke] if smoke else None, log=not smoke)
+    typer.echo(f"loadfix_{kind} -> {rid or '(smoke test, not logged)'} in {time.time() - t:.0f}s")
+
+
+from lmpsignal.presets import FROZEN_BASES, POST_PRESETS, SIGNAL_V1  # noqa: E402
 
 
 @app.command()
@@ -124,6 +132,120 @@ def post(name: str = typer.Argument(..., help=f"Preset: {', '.join(POST_PRESETS)
     typer.echo(f"{name} -> {rid} in {time.time() - t:.0f}s (parents: {', '.join(runs[m] for m in models)})")
     if len(weights):
         typer.echo(weights.groupby(["market", "component"]).mean(numeric_only=True).round(3).to_string())
+
+
+
+
+@app.command()
+def m7(candidate: str = typer.Argument(..., help="The frozen signal v1 (a model or post preset name)")):
+    """M7: the single holdout evaluation of the frozen signal v1. Requires LMP_UNLOCK_HOLDOUT=I_AM_RUNNING_M7.
+
+    Base models are refit monthly over the holdout exactly as in validation (logged as <model>_m7); the frozen
+    post-processing chain then runs over validation + holdout so calibration continues without a break (logged as
+    <preset>_m7); naive benchmarks are run on the holdout too. Only holdout months are scored in the summary."""
+    import json
+    import time
+
+    from lmpsignal import cv, panel, postprocess, registry, runner
+    from lmpsignal.config import HOLDOUT_END, HOLDOUT_START, holdout_unlocked
+    from lmpsignal.diagnostics import completed_runs
+    from lmpsignal.models.naive import Naive
+
+    if not holdout_unlocked():
+        raise typer.BadParameter("holdout is locked: set LMP_UNLOCK_HOLDOUT=I_AM_RUNNING_M7 for the single M7 run")
+    t = time.time()
+    p = panel.load(end=HOLDOUT_END)
+    val_folds, hold_folds = cv.folds(), cv.folds(start=HOLDOUT_START, end=HOLDOUT_END)
+    ref = Naive(runner.REFERENCE)
+    resolved: dict[str, str] = {}
+
+    def resolve(name: str) -> str:
+        if name in resolved:
+            return resolved[name]
+        if name in POST_PRESETS:
+            parents, steps = POST_PRESETS[name]
+            specs = {m: resolve(m) for m in parents}
+            steps = [dict(s, components={k: specs[v] for k, v in s["components"].items()}) if s["op"] == "assemble"
+                     else s for s in steps]
+            rid, _ = postprocess.run(name + "_m7", [specs[m] for m in parents], steps, panel=p,
+                                     folds=val_folds + hold_folds)
+        else:
+            val = completed_runs([name])[name]
+            model = (FROZEN_BASES.get(name) or MODELS[name])()
+            model.name = name + "_m7"
+            rid = val + "+" + runner.run(model, p, folds=hold_folds, reference=ref, quantiles="oos_residual")
+        typer.echo(f"  {name} -> {rid}  ({time.time() - t:.0f}s)")
+        resolved[name] = rid
+        return rid
+
+    final = resolve(candidate)
+    for rule in ("persist_da_d1", "lago_naive", "zero_congestion"):
+        bench = MODELS[rule]() if rule in MODELS else Naive(rule)
+        bench.name = rule + "_m7"
+        resolved[rule] = runner.run(bench, p, folds=hold_folds, reference=ref, verbose=False)
+    (registry.EXPERIMENTS_DIR / "m7_lineage.json").write_text(json.dumps({"candidate": candidate, **resolved}, indent=1))
+    typer.echo(f"M7 {candidate} -> {final}; benchmarks {resolved['persist_da_d1']}, {resolved['lago_naive']} "
+               f"in {time.time() - t:.0f}s")
+
+
+@app.command()
+def forecast(day: str = typer.Option(None, "--date", help="Delivery day YYYY-MM-DD (default: tomorrow, local)")):
+    """Live forecast of the frozen signal for one delivery day -> experiments.duckdb live_forecasts."""
+    import time
+    from datetime import date, datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    from lmpsignal import live
+
+    t = time.time()
+    d = date.fromisoformat(day) if day else datetime.now(ZoneInfo("America/New_York")).date() + timedelta(days=1)
+    out = live.forecast(d)
+    tot = out[(out["component"] == "total")].groupby("market")["mean"].mean()
+    typer.echo(f"forecast {d}: {len(out):,} rows; mean total DA {tot.get('da', float('nan')):.2f}, "
+               f"RT {tot.get('rt', float('nan')):.2f} $/MWh  ({time.time() - t:.0f}s)")
+
+
+@app.command()
+def nodes(day: str = typer.Option(None, "--date", help="Delivery day for the live node forecast (default: tomorrow)"),
+          evaluate: bool = typer.Option(False, help="Score the node mapping once on the validation folds (signal v1)")):
+    """Node-level forecasts from the signal's zone forecasts (energy + mapped loss and congestion)."""
+    import time
+    from datetime import date, datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    from lmpsignal import nodes as nd
+
+    t = time.time()
+    if evaluate:
+        from lmpsignal.config import EXPERIMENTS_DIR
+
+        runs = __import__("lmpsignal.diagnostics", fromlist=["completed_runs"]).completed_runs([SIGNAL_V1])
+        res = nd.evaluate(runs[SIGNAL_V1])
+        out = EXPERIMENTS_DIR / "nodes_v1_validation.csv"
+        res.to_csv(out, index=False)
+        typer.echo(res.round(3).to_string(index=False))
+        typer.echo(f"-> {out} ({time.time() - t:.0f}s)")
+        return
+    d = date.fromisoformat(day) if day else datetime.now(ZoneInfo("America/New_York")).date() + timedelta(days=1)
+    out = nd.live(d, SIGNAL_V1)
+    typer.echo(f"nodes {d}: {out['ptid'].nunique()} nodes, {len(out):,} rows ({time.time() - t:.0f}s)")
+
+
+@app.command()
+def dart():
+    """DART prototype: backtest zonal virtual positions from the signal on validation and (if run) the M7 holdout."""
+    from pathlib import Path
+
+    from lmpsignal import dart as dt
+    from lmpsignal.diagnostics import completed_runs
+
+    val = completed_runs([SIGNAL_V1])[SIGNAL_V1]
+    hold = dt.lineage_holdout(SIGNAL_V1)
+    summary, by_zone = dt.backtest(val, hold)
+    out = Path(__file__).resolve().parents[2] / "docs" / "experiments" / "dart_prototype.md"
+    dt.write_report(summary, by_zone, out)
+    typer.echo(summary.round(3).to_string(index=False))
+    typer.echo(f"-> {out}")
 
 
 @app.command()
