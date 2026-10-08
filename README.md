@@ -19,7 +19,7 @@ pricing. Those pricers are the next phase; this repository builds and validates 
 |---|---|
 | **Data** | ~455M rows of NYISO MIS data (Oct 2021 → Sep 2026) in Parquet + DuckDB: DA/RT prices for 15 zones and ~750 nodes, load and load forecasts, fuel mix, binding constraints, interface flows, reserve prices, transmission outage schedules; plus NOAA weather (station observations, HRRR), GFS forecast vintages and Henry Hub gas. DA zonal prices go back to 2015 for the monthly forecasts |
 | **Forecast** | Hourly DA and RT prices for day D, issued 05:00 ET on D−1 (the DAM bid deadline), with 21 quantiles per hour and zone |
-| **Validation** | 36 monthly rolling-origin folds (Oct 2022 → Sep 2025), 7-day embargo, 12-month holdout locked in code, every trial logged |
+| **Validation** | 36 monthly rolling-origin folds (Oct 2022 → Sep 2025), 7-day embargo, 12-month holdout locked in code and spent once (M7), every trial logged |
 | **Stack** | Python, DuckDB, Parquet, pandas, scikit-learn, LightGBM, PyTorch (optional), FastAPI, MapLibre, ECharts, GitHub Actions |
 
 ## Results (validation, 36 out-of-sample months)

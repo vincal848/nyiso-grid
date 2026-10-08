@@ -40,7 +40,7 @@
   time; `lmp panel` fails if any `_avail_*` audit column exceeds `issue_utc`. Document every new
   feature in `panel.FEATURES` (tests enforce it).
 - Validation = 36 monthly rolling-origin folds (2022-10..2025-09) with a 7-day embargo. The final
-  holdout (2025-10..2026-09) is locked by `config.guard`; unlock it only for the single M7 evaluation.
+  holdout (2025-10..2026-09) is locked by `config.guard`; it was unlocked once, for the M7 evaluation (done), and is spent: never unlock it again.
 - Structural estimates (shift factors, regimes) must be fit inside each fold on training data only.
 - Fit once, post-process many times: changes to model *outputs* (clipping, window averaging,
   combination, calibration) go through `lmp post` over stored OOS predictions, never a refit.
