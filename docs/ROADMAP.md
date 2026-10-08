@@ -46,7 +46,7 @@ phase; this phase builds the probabilistic LMP signal._
   anchor and the decay model and is the live monthly forecast (`lmp monthly`).
 - **M6 (2026-10-05)**: DDNN-JSU member (4-network ensemble) not adopted: worse alone (+30% DA CRPS); in
   combination with LEAR + GBM −1.8% DA, not significant. Signal v1 unchanged.
-- **Holdout data complete** (2026-10-02): warehouse and panel cover 2025-10-01..2026-09-30. Still locked.
+- **Holdout data complete** (2026-10-02): warehouse and panel cover 2025-10-01..2026-09-30. Opened once, for M7 (2026-10-05); spent.
 
 ## Metric decision (2026-09-28)
 Primary scores are **CRPS** (whole predictive distribution) and **RMSE** (conditional mean); MAE is
@@ -172,6 +172,33 @@ residuals: now 0), not to a signal re-run.
 - Paper trading started 2026-10-05 (first delivery day 2026-10-06): the daily job runs the spike member live
   (`lmp risk` -> `live_spike`) and writes DART v2 positions (`lmp positions` -> `live_dart`); track record via
   `lmp paper` and the dashboard's Signal tab. The rule stays frozen while the record accumulates.
+
+### M4 distributional calibration declaration (2026-10-08, before any run of these candidates)
+Scope: the open M4 items (joint DA/RT samples, EVT tail splice). Post-processing over signal v1's stored validation
+forecasts (`combo3_eq_aci`), no base-model runs, validation folds only (the holdout is spent by M7 and stays locked).
+Code: `scenarios.py` (pure), `scenario_run.py` (loading / logging), `lmp scen`, `lmp scen-report`.
+- **Candidates, budget 3 full runs** (smoke runs, unlogged, do not count; there is no reserved re-run: a bug-fix re-run
+  would be reported as an overrun):
+  1. `scen_gauss`: joint DA/RT scenarios, per-zone Gaussian copula fitted to the PIT pairs of signal v1's own
+     out-of-sample forecasts over the 365 days before the fold's training end; 500 draws per zone-hour; marginals are the
+     stored 21-quantile rows (piecewise-linear CDF, exponential tails).
+  2. `scen_emp`: same, empirical copula (PIT pairs resampled from that history).
+  3. `rt_gpd_tail`: RT total q95 and q99 replaced by q90 + (q95 - q05) x GPD quantile; GPD fitted per zone to the
+     width-normalised exceedances over q90 of earlier out-of-sample rows (730 days; pooled fit if a zone has < 50).
+- **Benchmark, not budgeted** (as the M5 baselines): `scen_indep`, the same sampler with independent draws, which is what
+  the DART rules and the M3b/M4 evaluation implicitly assume.
+- **Metrics and adoption rules** (fixed now). Generator: CRPS of the DA - RT spread distribution (from the draws) on
+  internal zones, folds 2..36 (fold 1 has no history), daily DM test vs `scen_indep`, Holm over the two copulas, with and
+  without 2025-06-24; adopted as the joint-sampling prerequisite for the DART and TCC pricers only if Holm p < 0.05 in both
+  views (the better of the two by CRPS if both pass). Also reported: per-zone Spearman correlation of the drawn PIT pairs
+  vs the realized pairs, KS of the realized spread's PIT. Tail splice: adopted into RT total only if pooled RT total
+  CRPS **and** spike-hour CRPS improve on `combo3_eq_aci` with DM one-sided p < 0.05 with and without 2025-06-24 (a single
+  candidate, so no Holm adjustment), and Kupiec's q99 miss rate moves toward 1%. Spike hours = M3b's `spike` flag.
+- **Checks of the method itself** (`pipeline/tests/test_scenarios.py`): synthetic data with known rho = 0.6 is recovered
+  (fitted rho, rank correlation of draws, spread CRPS gain) and independent data finds none; a heavy-tailed RT is found by
+  the splice and a Gaussian one left alone.
+- **Not attempted** (budget): QRA / LQRA, isotonic distributional regression, conformal ensemble; they stay open in the
+  research log. Not modelled: dependence across hours or zones (a TCC path price needs it).
 
 ## M4: probabilistic combination (evidence: strong for DA, European)
 QRA / LQRA over the member pool + isotonic distributional regression + conformal ensemble; EVT (GPD)
