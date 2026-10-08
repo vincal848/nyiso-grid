@@ -359,5 +359,57 @@ Without 2025-06-24 the picture is the same; PBO over the four = 0.003. No candid
 - **Not in M8**: TabPFN-TS (a second member doubles the daily run time; added only if Chronos-2 shows promise),
   fine-tuning (would need a clean training/evaluation split again).
 
+## M9: TCC pricer (evidence: Adamson-Englander 2005, Leslie 2018 on early NYISO; Potomac SOM 2024-25 for recent years)
+
+### M9 declaration (2026-10-08, before any run of these candidates)
+Question: does the structural congestion model price NYISO TCCs better than the auction does? Data: public tcc.nyiso.com
+reports ingested by `nyiso tcc` (350 rounds posted 2014-02..2026-10: 200 centralized 6-month / 1-year / 2-year, 40
+monthly reconfiguration to 2017-07, 110 balance-of-period (BOP) from 2017-08; 219,523 nodal prices, 636,216 award
+lines). Code: `tcc/pricer.py`, `tcc/evaluate.py` (pure), `tcc/data.py`, `tcc/run.py`; `lmp tcc`, `lmp tcc-report`.
+- **Unit and target.** One observation = an awarded path (POI -> POW) in one auction period, 1 MW. Target `y` = realized DA
+  congestion payoff over the contract period = sum over its hours of congestion(POW) - congestion(POI), congestion = -MCC
+  (NYISO subtracts MCC from the LBMP; sign checked: NYC minus WEST congestion is positive in both the DA data and the TCC
+  prices). `c` = the path's market clearing price (MCP) in $ per TCC for the whole period. A period counts only if both
+  ends have DA prices for >= 99% of its hours. Statistics are in $ per MW-month (divide by the period's months).
+- **Universe.** Awarded paths of auction periods whose information cutoff (posted date - 7 days; the bid deadline is not
+  scraped, so this is an assumption) leaves a full 365-day window inside the warehouse (cutoff >= 2022-10-01) and that
+  end by 2025-09-30. **The holdout (2025-10-01 onward) stays locked: no payoff after 2025-09-30 is read**, which drops the
+  newest auctions. Calendar of the resulting universe (counted before any price or payoff was looked at): 148 auction
+  periods, 76,220 path-periods: 28 centralized (16 six-month, 11 one-year, 1 two-year; all posted 2022-10..2024-10) and
+  120 BOP (monthly).
+- **Final test set, fixed now:** the 21 BOP auction periods posted 2025-01-24..2025-08-21 (posted >= 2025-01-01). Everything
+  posted earlier is the development set. Nothing is tuned: every parameter below is fixed in this declaration.
+- **Pricer** (information: delivery days < cutoff only). Shift factors: ridge (lambda 1.0, as M3) of each POI's hourly DA
+  congestion on the hourly DA shadow prices of the top-60 constraints of the 365 days before the cutoff
+  (`structural/congestion.py` pure estimators); POIs with < 90% of the window's hours get no factors (path not priced).
+  Expected payoff = sum over constraints of (A_POW - A_POI) x expected period total shadow price. Only the mean shadow price
+  enters; the shadow-price distribution's spread (path risk) is not priced.
+- **Candidates, budget 3 full runs** (smoke runs, unlogged, do not count; no reserved re-run: a bug-fix re-run is an overrun):
+  1. `tcc_struct_trailing`: expected shadow price = trailing-365-day mean per constraint x period hours; all awarded paths.
+  2. `tcc_struct_seasonal`: expected shadow price = mean over the window's hours in the period's calendar months (all
+     months for periods of a year or more, where it equals candidate 1); all awarded paths.
+  3. `tcc_struct_blend_illiquid`: mean of 1 and 2, on the **illiquid nodal paths** only: an end is a generator node and the
+     same directed path had no award in any auction in the 24 months before. This is the literature's claim (Leslie 2018:
+     88% of trader profit from first purchases of illiquid nodal products) as one declared test.
+- **Baselines, not budgeted:** (i) market: `c` itself; (ii) persistence: the realized payoff of the same dates one year
+  earlier (per hour, times this period's hours); (iii) climatology: mean hourly payoff over the 365 days before the cutoff
+  times period hours.
+- **Metrics.** Edge `s = (forecast - c)/months`, outcome `o = (y - c)/months`. Primary: mean net P&L per MW-month of the
+  buy-when-undervalued rule (buy 1 MW when `s` > cost; P&L = `o` - cost), cost = 2% of |c|/months + $0.50 per MW-month
+  (an **assumption**: the auction fees and the price impact a real bidder pays are not public; the report also shows 0%
+  and 5% as sensitivity). Primary p = the larger of two one-sided cluster-bootstrap p-values (resampling whole paths;
+  resampling whole auctions, which keeps the common shock inside an auction), 4,000 resamples. Secondary: the slope of `o` on
+  `s` (auction-clustered SE; 1 = the gap is right), squared-error Diebold-Mariano (Newey-West over the auction sequence,
+  `evaluate.diebold_mariano`) of the forecast vs each baseline, MAE by baseline.
+- **Null that must fail.** Shuffle the pricer's edge across the paths of each auction (1,000 permutations) and recompute
+  the rule's P&L: the shuffled version must not look like the real one. Method checks (`pipeline/tests/test_tcc_pricer.py`):
+  a planted edge (y = c + z, forecast sees z) is found and the permutation test rejects; with no planted edge, rejections
+  at 5% stay rare; forecasts do not change when data on or after the cutoff is overwritten.
+- **Verdict rule.** A candidate has an edge iff (a) on the development set its primary p, Holm-adjusted over the three
+  candidates, is < 0.05 with positive mean P&L, **and** (b) on the final test set its mean P&L is positive with the
+  auction-bootstrap p < 0.05. Otherwise the result is "no edge yet". The final test set is read once, after (a).
+- **Not in M9:** valuing risk (variance of path payoff, FTR-style hedging), the reconfiguration auctions' liquidity, outage
+  or gas-spread regime features (research log), any payoff after 2025-09-30.
+
 ## M7
 Single holdout evaluation, freeze signal v1.
