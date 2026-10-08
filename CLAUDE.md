@@ -68,6 +68,7 @@
 - `uv run nyiso serve` — dashboard at http://127.0.0.1:8000
 - `uv run lmp panel | baselines | report | docs` — forecasting harness
 - `uv run lmp train <lear|lear2|gbm_l1|gbm_l2> [--smoke N]` — validate a model (smoke = first N folds, not logged)
+- `uv sync --extra dev --extra deep` then `uv run lmp train ddnn` — M6 neural member (torch, CUDA 12.6 wheels; optional)
 - `uv run lmp graphs` — compile structural artifacts into data/structure.duckdb (dashboard Signal tab)
 - `uv run lmp post <preset>` — clip / combine / calibrate stored predictions (seconds to minutes, logged as a trial)
 - `uv run lmp m7 <signal>` — the single holdout evaluation (needs `LMP_UNLOCK_HOLDOUT=I_AM_RUNNING_M7`; done for v1)

@@ -44,6 +44,8 @@ phase; this phase builds the probabilistic LMP signal._
 - **M3b / M4 (2026-10-05)**: spike member and robust combination not adopted; DART v2 positive on validation, now
   paper-traded live. **M5 (2026-10-05)**: monthly DA products, horizons 1-6; the seasonal norm beat the gas x heat-rate
   anchor and the decay model and is the live monthly forecast (`lmp monthly`).
+- **M6 (2026-10-05)**: DDNN-JSU member (4-network ensemble) not adopted: worse alone (+30% DA CRPS); in
+  combination with LEAR + GBM −1.8% DA, not significant. Signal v1 unchanged.
 - **Holdout data complete** (2026-10-02): warehouse and panel cover 2025-10-01..2026-09-30. Still locked.
 
 ## Metric decision (2026-09-28)
@@ -241,6 +243,54 @@ needed. Baselines: `m5_persist-…d90f81`, `m5_lastyear-…0838ca`, `m5_norm-…
 Feed-forward DNN / NBEATSx ensemble (4+ runs), distributional DNN (Johnson SU); TabPFN-TS or
 Chronos-2 with covariates as one ensemble member (check pretraining contamination). TFT and
 spatio-temporal GNNs deprioritized (weakest real-ISO evidence).
+
+### M6 declaration (2026-10-05, before any M6 run)
+- **Member** `ddnn`: distributional feed-forward network with Johnson's SU output (DDNN-JSU, Marcjasz, Narajewski,
+  Weron & Ziel 2023), the strongest classic CRPS model in the research notes. One network per market (DA, RT), pooled
+  over the 15 locations. Input per location-day: the panel features for the 24 hours of D (all as of 05:00 ET D−1),
+  location one-hot and weekday. Output: JSU parameters for the 24 hours × 4 targets (total, energy, loss, congestion).
+  Targets are standardized per fold (median, MAD) and asinh-transformed; quantiles map back through the inverse.
+  Architecture fixed in advance, no hyperparameter search: 2 hidden layers (512, 256), ReLU, dropout 0.1, weight decay
+  1e-5, Adam (lr 1e-3, batch 256), early stopping on the last 56 days of the training window (patience 20, at most 200
+  epochs). Training window: all panel data up to the fold's training end (same monthly refit as the other members).
+  **Ensemble of 4 networks** (seeds 0–3) per fold and market, combined by averaging quantiles (the qEns variant).
+  Point forecast = mean of the 1%..99% quantiles (a trimmed mean; the JSU-of-asinh mean can explode).
+- **Budget: 3 full runs.** (1) `ddnn` with feature set v1 (signal v1's inputs); (2) `ddnn_v3` with v3 (+ HRRR,
+  weather-corrected load); (3) reserved for one bug-fix re-run. Smoke runs (≤ 2 folds, not logged) do not count.
+- **Post presets** (with `ddnn*` = the run with the lower pooled total CRPS, chosen before any combination is scored):
+  `ddnn_aci` (ACI over the member's mean, for the scoreboard), `combo4_eq_aci` (equal-weight mean of `lear_clip`,
+  `gbm_l1`, `ddnn*`, then clip and ACI), `combo_dnn_lear_aci` (equal-weight `lear_clip` + `ddnn*`, the literature's
+  "DNN ensemble averaged with LEAR"; then clip and ACI).
+- **Adoption rule**: a candidate (`ddnn*` raw, `combo4_eq_aci`, `combo_dnn_lear_aci`) replaces signal v1 only if pooled
+  total CRPS improves on `combo3_eq_aci` in **both** DA and RT, each with Holm-adjusted DM p < 0.05 (Holm over the
+  three), with and without 2025-06-24, and PBO < 0.5. Validation only (the holdout is spent); a signal change would go
+  live as v2 with the live track record as its out-of-sample evidence.
+- **Not run in M6** (research log): Chronos-2 and TabPFN-TS, because their pretraining corpora and cutoffs (2025)
+  overlap the 2022-10..2025-09 validation period, so a validation score cannot be trusted; they can be scored cleanly
+  only as live shadow members. NBEATSx: its documented gain over a DNN ensemble is 2–5% and not significant on PJM.
+  TFT and graph networks: weakest real-ISO evidence (as above).
+
+### M6 result (2026-10-05): DDNN member not adopted; signal v1 unchanged
+Budget used: 2 of 3 (`ddnn-20261005T155208-51c50c`, `ddnn_v3-20261005T162140-04cb4b`); the reserved run was not
+needed. `ddnn*` = `ddnn` (pooled total CRPS 8.56 vs 10.94 for `ddnn_v3`; the v3 inputs made it worse). Presets:
+`ddnn_aci-…28b6e3`, `combo4_eq_aci-…663eca`, `combo_dnn_lear_aci-…7081af`. Total CRPS vs `combo3_eq_aci`:
+
+| candidate | DA | RT | Holm p (DA / RT) |
+|---|---|---|---|
+| `ddnn` (own JSU distribution) | +30.3% | +6.7% | 1.00 / 1.00 |
+| `combo4_eq_aci` (LEAR + GBM + DDNN) | **−1.8%** | −0.0% | 0.31 / 1.00 |
+| `combo_dnn_lear_aci` (LEAR + DDNN) | +2.7% | +4.7% | 1.00 / 1.00 |
+
+Without 2025-06-24 the picture is the same; PBO over the four = 0.003. No candidate passes, so **signal v1 is unchanged**.
+- Where the DDNN fails: in ordinary months it is close to LEAR (median fold RMSE ratio 1.09 DA, 1.03 RT); in
+  cold-weather shock months it is far worse (DA RMSE 58 vs 30 in 2022-12, Winter Storm Elliott; 84 vs 24 in 2025-01).
+  It cannot extrapolate beyond its training range (and the tail guard caps it there), while LEAR extrapolates
+  linearly in asinh space.
+- Training stopped early: networks ran 21–115 epochs (median ~30) with patience 20, so many had their best
+  validation loss within the first few epochs. The literature tunes DNNs with about a day of hyperparameter search
+  per market; M6 fixed the architecture in advance. Follow-ups are in the research log.
+- Smoke-test fixes before the runs (fold 1, not logged): the output quantiles were sorted together with the
+  trimmed-mean grid (wrong quantiles); tails are now clipped to the training range of the transformed target.
 
 ## M7
 Single holdout evaluation, freeze signal v1.

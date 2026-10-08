@@ -62,6 +62,9 @@ MODELS = {
     "gbm_l2": lambda: __import__("lmpsignal.models.gbm", fromlist=["GBM"]).GBM(objective="l2"),
     "gbm_l1_v3": lambda: __import__("lmpsignal.models.gbm", fromlist=["GBM"]).GBM(objective="l1", feature_set="v3"),
     "lear_wx": lambda: __import__("lmpsignal.models.lear", fromlist=["LEAR"]).LEAR(inputs="loadfix_hrrr"),
+    # M6 (declared in docs/ROADMAP.md): needs the optional `deep` extra
+    "ddnn": lambda: __import__("lmpsignal.models.ddnn", fromlist=["DDNN"]).DDNN(),
+    "ddnn_v3": lambda: __import__("lmpsignal.models.ddnn", fromlist=["DDNN"]).DDNN(feature_set="v3"),
 }
 
 
@@ -80,8 +83,9 @@ def train(
     t = time.time()
     p = panel.load(end=VALIDATION_END)          # validation never loads holdout rows
     folds = cv.folds()[:smoke] if smoke else None
-    rid = runner.run(MODELS[model](), p, folds=folds, reference=Naive(runner.REFERENCE),
-                     quantiles="oos_residual", log=not smoke)
+    m = MODELS[model]()
+    q = "model" if getattr(m, "distributional", False) else "oos_residual"     # DDNN keeps its own distribution
+    rid = runner.run(m, p, folds=folds, reference=Naive(runner.REFERENCE), quantiles=q, log=not smoke)
     typer.echo(f"{model} -> {rid or '(smoke test, not logged)'} in {time.time() - t:.0f}s")
 
 
