@@ -105,6 +105,19 @@ def validate(threshold: float = typer.Option(0.99, help="Flag days below this co
 
 
 @app.command()
+def tcc(
+    first_season_year: int = typer.Option(2014, help="First auction season year to fetch"),
+    refresh: bool = typer.Option(False, help="Re-download finalized rounds too"),
+):
+    """Download NYISO TCC auction results (public tcc.nyiso.com reports) and write curated Parquet."""
+    from nyiso.store.tcc import run
+
+    tables = run(first_season_year, refresh)
+    for k, df in tables.items():
+        typer.echo(f"{k}: {len(df):,} rows")
+
+
+@app.command()
 def docs():
     """Regenerate docs/DATA.md and docs/data_dictionary.json (dictionary + live stats)."""
     from nyiso.store.catalog import connect
