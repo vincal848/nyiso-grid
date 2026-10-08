@@ -548,8 +548,8 @@ trial). Tables: `docs/experiments/dart_pricer.md`. **All numbers are validation-
 - **Declaration corrections, made after the runs and before any forward day** (no result changed): (1) fold 1 (2022-10) has no stored
   signal quantiles, so no strategy trades it and the first priced fold (2022-11) has no earlier PIT pairs, so it uses rho = 0 for every
   zone (the declaration said "folds 1..36"; it is 2..36, 1,065 days). (2) With no pricer adopted, the forward score defaults to DART v2
-  (same window rule, N and test). (3) The window start is the code constant `FORWARD_START` in `dart_pricer_run.py` (set to 2026-10-09,
-  the first day after this PR is expected to land); it must be edited to the first delivery day after the daily job is re-enabled,
+  (same window rule, N and test). (3) The window start is the code constant `FORWARD_START` in `dart_pricer_run.py` (set to 2026-10-10: the daily job was re-enabled
+  on 2026-10-08 and first runs 2026-10-09 04:30, so 10-10 is the first delivery day it can record before the day begins). It was
   committed before that day, because coverage (>= 80% of calendar days since the start) is measured from it. Days before it never count,
   so 2026-10-06 is excluded.
 - Limits: costs are an assumption (fee source not retrieved); price taker; no cross-hour or cross-zone dependence; the pricer has no spike

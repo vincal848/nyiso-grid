@@ -24,7 +24,7 @@ CANDIDATES: dict[str, tuple[dp.Kind, bool]] = {          # name -> (kind, indepe
     "dart_taker": ("taker", False), "dart_bidcurve": ("bidcurve", False), "dart_bidcurve_indep": ("bidcurve", True)}
 LIMITS = dp.Limits()
 SEED = 0
-FORWARD_START = date(2026, 10, 9)    # first delivery day of the forward window: set to the first day after the daily job is re-enabled
+FORWARD_START = date(2026, 10, 10)   # first counted delivery day: the re-enabled daily job first runs 2026-10-09 04:30, recording positions for 10-10
 
 
 def wide_signal(run_id: str) -> pd.DataFrame:
