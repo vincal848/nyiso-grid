@@ -13,6 +13,7 @@ import pandas as pd
 
 from lmpsignal import cv, registry, scenarios
 from lmpsignal import dart as dart_io
+from lmpsignal import dart_forward as fw
 from lmpsignal import dart_pricer as dp
 from lmpsignal.config import INTERNAL_ZONES
 from lmpsignal.diagnostics import completed_runs
@@ -23,9 +24,7 @@ CANDIDATES: dict[str, tuple[dp.Kind, bool]] = {          # name -> (kind, indepe
     "dart_taker": ("taker", False), "dart_bidcurve": ("bidcurve", False), "dart_bidcurve_indep": ("bidcurve", True)}
 LIMITS = dp.Limits()
 SEED = 0
-FORWARD_N = 365                                              # counted settled days before `lmp dart-score` scores
-MIN_COVERAGE = 0.8
-ZONE_HOURS_MIN = 11 * 23                                     # a settled day has every zone-hour (23 on the spring DST day)
+FORWARD_START = date(2026, 10, 9)    # first delivery day of the forward window: set to the first day after the daily job is re-enabled
 
 
 def wide_signal(run_id: str) -> pd.DataFrame:
@@ -132,35 +131,33 @@ def live_price(d: date, candidate: str, signal: str = SIGNAL_V1) -> pd.DataFrame
     return out
 
 
-def counted_days(candidate: str) -> pd.DataFrame:
-    """Forward positions of `candidate` on counted days: created before the delivery day began (ET) and fully settled.
-    Columns: positions (side, bid_price, x, ts_utc, zone, delivery_date) with y_da, y_rt."""
-    with registry.connect(read_only=True) as con:
-        if not con.execute("SELECT count(*) FROM duckdb_tables() WHERE table_name = 'live_dart_pricer'").fetchone()[0]:
-            return pd.DataFrame()
-        x = con.execute("""SELECT delivery_date, ts_utc, zone, side, bid_price, x_mw AS x, created_utc FROM live_dart_pricer
-                           WHERE candidate = ?""", [candidate]).df()
-    x["delivery_date"] = pd.to_datetime(x["delivery_date"])
-    day_start = x["delivery_date"].dt.tz_localize("America/New_York").dt.tz_convert("UTC")
-    x = x[pd.to_datetime(x["created_utc"], utc=True) < day_start]                         # no after-the-fact fills
-    x = x.merge(dart_io.outcomes(), on=["ts_utc", "zone"], how="left")
-    ok = x.groupby("delivery_date").agg(n=("zone", "size"), settled=("y_rt", lambda s: s.notna().all()),
-                                        settled_da=("y_da", lambda s: s.notna().all()))
-    ok = ok[(ok["n"] >= ZONE_HOURS_MIN) & ok["settled"] & ok["settled_da"]].index
-    return x[x["delivery_date"].isin(ok)]
-
-
 def daily_pnl(x: pd.DataFrame) -> pd.Series:
     """Net daily P&L of counted-day positions (columns side, bid_price, x, y_da, y_rt, delivery_date)."""
     r = dp.realize(x, x["y_da"].to_numpy(), x["y_rt"].to_numpy())
     return r["pnl"].groupby(x["delivery_date"]).sum()
 
 
-def score(candidate: str) -> str:
-    """The forward score. Before N counted days: progress only. At N: the declared one-sided test, stored once (the first N days);
-    later calls return the stored result and never re-test."""
-    from lmpsignal import dart_forward as fw
+def forward_positions(candidate: str) -> pd.DataFrame:
+    """Stored forward positions as (delivery_date, ts_utc, zone, side, bid_price, x, created_utc). `dart_v2` is the live_dart rule
+    (fixed bids: always clear); a pricer candidate is read from live_dart_pricer."""
+    with registry.connect(read_only=True) as con:
+        table = "live_dart" if candidate == "dart_v2" else "live_dart_pricer"
+        if not con.execute("SELECT count(*) FROM duckdb_tables() WHERE table_name = ?", [table]).fetchone()[0]:
+            return pd.DataFrame(columns=["delivery_date"])
+        if candidate == "dart_v2":
+            x = con.execute("SELECT delivery_date, ts_utc, zone, x_mw, created_utc FROM live_dart WHERE rule = 'v2'").df()
+            side = np.sign(x["x_mw"]).astype(int)
+            x = x.assign(side=side, bid_price=np.where(side == 0, np.nan, -side * np.inf), x=x["x_mw"].abs())
+        else:
+            x = con.execute("""SELECT delivery_date, ts_utc, zone, side, bid_price, x_mw AS x, created_utc FROM live_dart_pricer
+                               WHERE candidate = ?""", [candidate]).df()
+    x["delivery_date"] = pd.to_datetime(x["delivery_date"])
+    return x
 
+
+def score(candidate: str = "dart_v2") -> str:
+    """The forward score (docs/ROADMAP.md, DART pricer declaration). Before N counted days: progress only. At N: the declared
+    test, stored once (the first N days); later calls return the stored result and never re-test."""
     with registry.connect() as con:
         con.execute(SCORE_SCHEMA)
         done = con.execute("SELECT * FROM dart_forward_score WHERE candidate = ?", [candidate]).df()
@@ -168,27 +165,18 @@ def score(candidate: str) -> str:
         r = done.iloc[0]
         return (f"{candidate}: scored {r['scored_utc']:%Y-%m-%d} on {r['n_days']} days {r['first_day']}..{r['last_day']}: "
                 f"mean ${r['mean_daily']:,.2f}/day, total ${r['total']:,.0f}, p = {r['p_value']:.3f}: {r['verdict']}")
-    x = counted_days(candidate)
-    daily = daily_pnl(x).sort_index() if not x.empty else pd.Series(dtype=float)
-    n = len(daily)
-    if n < FORWARD_N:
-        first = daily.index.min() if n else None
-        span = ((pd.Timestamp(date.today()) - first).days + 1) if n else 0
-        cov = f", coverage {n / span:.0%} of {span} calendar days since {first:%Y-%m-%d}" if n else ""
-        return (f"{candidate}: {n} of {FORWARD_N} counted settled days{cov}; cum net P&L ${daily.sum():,.0f}. "
-                f"Not scoring before {FORWARD_N} (declared; no early looks).")
-    daily = daily.iloc[:FORWARD_N]
-    span = (daily.index.max() - daily.index.min()).days + 1
-    if FORWARD_N / span < MIN_COVERAGE:
-        return f"{candidate}: invalid forward record, {FORWARD_N} counted days over {span} calendar days (< {MIN_COVERAGE:.0%} coverage)"
-    v = daily.to_numpy()
-    p = fw.bootstrap_p(v)
-    t = float(fw._t(v))
-    verdict = "forward pass (p < 0.05)" if p < 0.05 and v.mean() > 0 else "not shown (underpowered: not evidence of no edge)"
+    x = forward_positions(candidate)
+    x = fw.counted(x, dart_io.outcomes(), pd.Timestamp(FORWARD_START)) if not x.empty else x
+    daily = daily_pnl(x) if not x.empty else pd.Series(dtype=float)
+    r = fw.evaluate(daily, pd.Timestamp(FORWARD_START), pd.Timestamp(date.today()))
+    if r["status"] == "waiting":
+        return (f"{candidate}: {r['n_days']} of {fw.FORWARD_N} counted settled days since {FORWARD_START} "
+                f"(coverage {r['coverage']:.0%}); cum net P&L ${r['total']:,.0f}. Not scoring before {fw.FORWARD_N} (declared, no early looks).")
+    if r["status"] == "invalid":
+        return f"{candidate}: invalid forward record, coverage {r['coverage']:.0%} < {fw.MIN_COVERAGE:.0%} of days since {FORWARD_START}"
     with registry.connect() as con:
         con.execute("INSERT INTO dart_forward_score VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [candidate, datetime.now(UTC), FORWARD_N, daily.index.min().date(), daily.index.max().date(),
-                     float(v.mean()), float(v.sum()), t, p, verdict, registry.git_commit()])
-    return (f"{candidate}: scored on {FORWARD_N} days {daily.index.min():%Y-%m-%d}..{daily.index.max():%Y-%m-%d}: "
-            f"mean ${v.mean():,.2f}/day, total ${v.sum():,.0f}, p = {p:.3f}: {verdict}")
-
+                    [candidate, datetime.now(UTC), r["n_days"], r["first_day"].date(), r["last_day"].date(), r["mean_daily"],
+                     r["total"], r["t_stat"], r["p_value"], r["verdict"], registry.git_commit()])
+    return (f"{candidate}: scored on {r['n_days']} days {r['first_day']:%Y-%m-%d}..{r['last_day']:%Y-%m-%d}: "
+            f"mean ${r['mean_daily']:,.2f}/day, total ${r['total']:,.0f}, p = {r['p_value']:.3f}: {r['verdict']}")

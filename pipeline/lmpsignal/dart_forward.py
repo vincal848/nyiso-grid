@@ -60,3 +60,42 @@ def required_n(curve: pd.DataFrame, target: float = 0.8) -> float:
     """Smallest simulated n with power >= target (NaN if the grid never reaches it)."""
     ok = curve[curve["power"] >= target]
     return float(ok["n_days"].min()) if len(ok) else float("nan")
+
+
+# ----------------------------------------------------------------------------- the declared forward window
+
+FORWARD_N = 365            # counted settled days before the one scoring
+MIN_COVERAGE = 0.8         # counted days / calendar days since the window start, else the record is invalid
+ZONE_HOURS_MIN = 11 * 23   # a complete day has every internal zone-hour (23 hours on the spring DST day)
+
+
+def counted(x: pd.DataFrame, outcomes: pd.DataFrame, start: pd.Timestamp) -> pd.DataFrame:
+    """Rows of positions `x` (delivery_date, ts_utc, zone, created_utc, ...) that count toward the forward window: the delivery day
+    is on/after `start`, the rows were created before the delivery day began in New York (no after-the-fact fills), and the day is
+    complete and fully settled in `outcomes` (ts_utc, zone, y_da, y_rt). Returns x joined with y_da, y_rt."""
+    x = x[x["delivery_date"] >= start]
+    day_start = x["delivery_date"].dt.tz_localize("America/New_York").dt.tz_convert("UTC")
+    x = x[pd.to_datetime(x["created_utc"], utc=True) < day_start].merge(outcomes, on=["ts_utc", "zone"], how="left")
+    g = x.groupby("delivery_date")
+    ok = (g["zone"].size() >= ZONE_HOURS_MIN) & g["y_da"].apply(lambda s: s.notna().all()) & g["y_rt"].apply(lambda s: s.notna().all())
+    return x[x["delivery_date"].isin(ok[ok].index)]
+
+
+def evaluate(daily: pd.Series, start: pd.Timestamp, today: pd.Timestamp, n: int = FORWARD_N,
+             min_coverage: float = MIN_COVERAGE) -> dict:
+    """Status of the forward record from daily net P&L of counted days: 'waiting' (fewer than n days: no test, no early look),
+    'invalid' (coverage below the minimum over the window so far) or 'scored' (one-sided block-bootstrap p on the first n days)."""
+    daily = daily.sort_index()
+    if len(daily) < n:
+        span = max((today - start).days + 1, len(daily), 1)
+        return {"status": "waiting", "n_days": len(daily), "coverage": len(daily) / span, "total": float(daily.sum())}
+    d = daily.iloc[:n]
+    span = (d.index.max() - start).days + 1
+    if n / span < min_coverage:
+        return {"status": "invalid", "n_days": n, "coverage": n / span}
+    v = d.to_numpy()
+    p = bootstrap_p(v)
+    return {"status": "scored", "n_days": n, "coverage": n / span, "first_day": d.index.min(), "last_day": d.index.max(),
+            "mean_daily": float(v.mean()), "total": float(v.sum()), "t_stat": float(_t(v)), "p_value": p,
+            "verdict": "forward pass (p < 0.05)" if p < 0.05 and v.mean() > 0
+            else "not shown (underpowered: not evidence of no edge)"}

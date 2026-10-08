@@ -9,7 +9,7 @@ in their own layers):
   5. lmp forecast     frozen signal -> experiments.duckdb live_forecasts
   6. lmp nodes        node-level forecasts for tomorrow -> live_node_forecasts
   7. lmp risk         RT spike probabilities (M3b member, separate from the signal) -> live_spike
-  8. lmp positions    DART v2 paper positions -> live_dart (paper only; track record: `lmp paper`)
+  8. lmp positions    DART v2 paper positions -> live_dart (paper only; `lmp paper`; `lmp dart-score` scores them at 365 days)
   9. lmp monthly      M5 monthly DA forecasts, latest vintage (changes once a month) -> live_monthly
  10. lmp shadow       M8 Chronos-2 shadow member -> live_shadow (needs the `deep` extra; last, so it cannot block the rest)
 

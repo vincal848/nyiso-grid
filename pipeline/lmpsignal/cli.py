@@ -396,25 +396,25 @@ def dart_pricer_report():
 
 
 @app.command("dart-price")
-def dart_price(day: str = typer.Option(None, "--date", help="Delivery day (default: tomorrow)")):
-    """Live DART pricer positions (the adopted candidate) for one delivery day -> live_dart_pricer. Needs `lmp forecast`."""
+def dart_price(candidate: str = typer.Option(..., help="dart_taker | dart_bidcurve | dart_bidcurve_indep"),
+               day: str = typer.Option(None, "--date", help="Delivery day (default: tomorrow)")):
+    """Live paper positions of one DART pricer candidate for one delivery day -> live_dart_pricer. Needs `lmp forecast`.
+    Not in the daily job: no candidate passed the declared adoption gate (docs/ROADMAP.md, DART pricer result)."""
     from lmpsignal import dart_pricer_run as run
-    from lmpsignal.presets import DART_PRICER
 
     d = _day(day)
-    out = run.live_price(d, DART_PRICER)
+    out = run.live_price(d, candidate)
     by = out.groupby("zone")["x_mw"].sum().round(1)
-    typer.echo(f"dart-price {d} ({DART_PRICER}): {(out['x_mw'] > 0).sum()} zone-hours, MW by zone: "
+    typer.echo(f"dart-price {d} ({candidate}): {(out['x_mw'] > 0).sum()} zone-hours, MW by zone: "
                + ", ".join(f"{z} {v:.1f}" for z, v in by.items()))
 
 
 @app.command("dart-score")
-def dart_score():
-    """Forward score of the adopted DART pricer: progress until N counted settled days, then the declared test (once)."""
+def dart_score(candidate: str = typer.Option("dart_v2", help="dart_v2 (live_dart) or a pricer candidate (live_dart_pricer)")):
+    """Forward score of a DART rule: progress until 365 counted settled days, then the declared test (run once, stored)."""
     from lmpsignal import dart_pricer_run as run
-    from lmpsignal.presets import DART_PRICER
 
-    typer.echo(run.score(DART_PRICER))
+    typer.echo(run.score(candidate))
 
 
 @app.command()
