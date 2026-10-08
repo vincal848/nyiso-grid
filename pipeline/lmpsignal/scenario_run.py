@@ -14,7 +14,7 @@ from scipy.stats import kstest
 
 from lmpsignal import cv, registry, scenarios
 from lmpsignal.config import EXPERIMENTS_DIR, INTERNAL_ZONES
-from lmpsignal.dart import SPIKE_DAY
+from lmpsignal.dart_rules import SPIKE_DAY
 from lmpsignal.diagnostics import completed_runs, daily_losses
 from lmpsignal.evaluate import QCOLS, diebold_mariano, kupiec_pof, score_table
 from lmpsignal.overfit import holm

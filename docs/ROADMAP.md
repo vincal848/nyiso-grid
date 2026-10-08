@@ -446,5 +446,114 @@ lines); universe 148 auction periods, 76,220 path-periods (28 centralized, 120 B
 - Open (research log): shrink the pricer's gap toward the price (slope 0.4); regime features (gas spreads, outage schedule
   vs the auction date); short side and sells of previously bought TCCs; BOP vs centralized liquidity.
 
+## DART pricer (last build item; evidence: Potomac SOM 2024-25, `docs/research/notes/industry_practice.md` section 5)
+
+### DART pricer declaration (2026-10-08, before any run of these candidates)
+Question: does pricing zonal virtuals from signal v1's joint DA/RT scenarios, with a bid curve, fees and risk limits, earn after
+costs where DART v2 does? **Status of the evidence: the 2025-10..2026-09 holdout is spent** (M7, then DART v1 and v2 were designed
+after seeing it). Every number from the 36 validation folds below is **development only, not out-of-sample evidence**; the only
+clean test of any DART claim is the forward live window declared here. Code: `dart_rules.py` (v1/v2 rules and P&L, pure; split from
+`dart.py` first, outputs identical on the validation folds), `dart_pricer.py` (pricer, bid curve, risk limits, null: pure),
+`dart_forward.py` (power and forward test: pure), `dart_pricer_run.py` (loading, logging, live table: edge); `lmp dart-pricer`,
+`lmp dart-pricer-report`, `lmp dart-price` (live), `lmp dart-score`.
+- **Pricer** (every constant fixed here; nothing is tuned). Per internal zone-hour, 500 joint (DA, RT) draws (M4's adopted
+  Gaussian copula, `scenarios.py`; rho = the zone's DA/RT PIT rank-normal correlation over the 365 days before the fold's training
+  end, 0 where the zone has < 500 earlier pairs, which is every zone in fold 1, as in DART v2). Spread = DA - RT. Cost c = $0.50 per
+  **cleared** MWh. A virtual supply offer (INC) at price p clears iff DA >= p and earns DA - RT - c; a virtual load bid (DEC) at p
+  clears iff DA <= p and earns RT - DA - c. Clearing uses the realized DA price, so a virtual that would lose in the states where it
+  clears is simply not cleared in the others: this is the bid curve. Assumption (not verified against the NYISO scheduling manual):
+  virtual bids may be price-sensitive with one step; fixed bids are `dart_taker`. Price taker: bids never move prices.
+  - bid price: the step that maximises the draws' mean net P&L per MW (sort the draws by DA, cumulate the net P&L from the clearing
+    side); the side (INC or DEC) with the larger value; no trade if that value <= 0. mu = that value; sigma = standard deviation of
+    the per-MW net P&L (zeros where not cleared) over the draws; clearing probability = share of draws that clear.
+  - size: x = min(mu / sigma, 1) MW (the cap per zone-hour is 1 MW, the unit DART v1/v2 use).
+  - risk limits (assumptions, magnitudes set once from DART v2's validation daily P&L, sd $4,496): per delivery day (a) **daily
+    loss limit** $3,000: sum over zone-hours of x times the 1% worst per-MW draw (all zone-hours assumed to lose together) is scaled
+    down to the limit; (b) **collateral proxy** $15,000: sum of x times clearing probability times the 99th percentile DA price
+    (notional of cleared energy at a high price) is scaled down to the limit. The NYISO credit formula for virtuals was not found
+    in a primary source; this is a stand-in.
+  - outputs per zone-hour (also stored live): expected spread and its q05 / q50 / q95, bid price, clearing probability, mu, sigma, x.
+- **Candidates, budget 3 full runs** (smoke runs, unlogged, do not count; no reserved re-run: a bug-fix re-run is an overrun and is
+  reported as one): 1. `dart_taker`: fixed (always-clearing) virtuals, side by the sign of the draws' mean net spread, size
+  x = min(|mean net spread| / sd of spread, 1). 2. `dart_bidcurve`: the pricer above. 3. `dart_bidcurve_indep`: the pricer with
+  independent draws (rho = 0 for every zone), the ablation that says whether the copula matters for P&L.
+- **Baselines, not budgeted:** no trade; DART v2 exactly as `docs/experiments/dart_v2.md` (cost on every position); naive
+  last-known-spread: sign of the same zone-hour's DA - RT spread two days earlier (D-1's RT is not complete at the 05:00 bid
+  deadline), 1 MW, cost on every position. Same rows (folds 1..36). Baselines carry no risk limits, as in the earlier pages; the
+  pricer's limits are reported as what they cost (a limits-off column from the same sampled draws, not a separate run).
+- **Metrics** (daily net P&L, $, 1 MW cap): total, per cleared MWh, annualised Sharpe, max drawdown, the same excluding 2025-06-24
+  (the spike day) and excluding 2022-12-23/24 (Winter Storm Elliott: **these two days are 76% of DART v2's validation P&L**,
+  $176.6k of $231.4k), the one-sided stationary-block-bootstrap p that mean daily net P&L > 0 (10,000 resamples, mean block 5 days,
+  seed 0), Holm-adjusted over the three candidates; cost sensitivity at $0.25 and $1.00. Fee note: the all-in $0.50 is the project's
+  standing assumption (v1/v2 use it), covering NYISO market-services charges, uplift and slippage together; the primary source (NYISO
+  Rate Schedule 1 / Accounting and Billing Manual) could not be fetched (the tariff pages are script-rendered and no document URL
+  was discoverable), and Potomac's SOM (footnote 236) states that its virtual profit figures leave out "other related costs or
+  charges". Confirm against the current Rate Schedule 1 before any capital.
+- **Null that must fail.** The realized (DA, RT) price pairs are shuffled across days within each zone and local hour (500
+  permutations; positions are fixed, only the outcomes move, so the pricer's clearing and size rules are applied to outcomes it
+  could not have predicted). The real P&L must exceed the null's 95th percentile. Method checks
+  (`pipeline/tests/test_dart_pricer.py`): a planted edge (the forecast knows the RT shift) earns after costs, the same forecast with
+  its RT shift shuffled across rows earns nothing, clearing is exact on a hand example, and the risk limits scale and never inflate.
+- **Adoption for paper trading** (no claim of edge): the candidate with the highest all-day validation net P&L among those that
+  (a) have positive mean daily net P&L both over all days and excluding 2022-12-23/24, and (b) exceed the null's 95th percentile.
+  If none does, no pricer is adopted, the result is "no edge yet", and nothing is wired into the daily job.
+- **Forward window (the only clean test).** Counted days: delivery days D with a stored pricer row set whose `created_utc` is before
+  D 00:00 ET (so a day cannot be filled in afterwards) and that are fully settled (DA and RT prices for all 11 zones and 24 hours in
+  the panel). The window starts at the first counted day after this lands in the live checkout and the daily job is re-enabled
+  (**the job is disabled now, so nothing accrues until it is**); a missed day is a missed day, never backfilled. The score is run
+  **once, at N = 365 counted days**, by `lmp dart-score`, which refuses to score earlier. The forward record is valid only if the
+  counted days are >= 80% of the calendar days since the window start (so switching the job off cannot select days). Test: one-sided
+  block-bootstrap p (as above) that the adopted candidate's mean daily net P&L is > 0, alpha = 0.05; "forward pass" if p < 0.05,
+  otherwise "not shown" (which is **not** evidence of no edge: see power). Descriptive, no pass/fail: the paired difference against
+  DART v2 (running since 2026-10-06 in `live_dart`), the naive rule and no trade on the same days.
+- **Power and N** (`dart_forward.power_curve`, 2,000 simulated forward windows per length, resampling DART v2's 1,065 validation
+  daily P&L values in stationary blocks, taking that validation distribution as the truth, which flatters it because v2 was chosen on
+  it): power of the one-sided 5% test of mean > 0 at 60 / 120 / 250 / 365 / 730 / 1,095 / 2,000 / 3,000 days = 23% / 33% / 35% / 38%
+  / 53% / 61% / 79% / 91%. **The first length reaching 80% power is about 2,000-3,000 days (normal approximation: 2,650, about
+  seven years)**; excluding the two Elliott days (mean $51/day, sd $1,815) power is 13% at 365 days and stays below 80% even at 4,000.
+  So N = 365 is declared knowing the test is under-powered for a validation-sized effect, and the page must say so; the 80%-power N is
+  stated so the cost of a clean answer is visible, and `lmp dart-score` prints the running power at the current N. The validation
+  bootstrap p for v2 is 0.035 over all days and 0.21 without the two Elliott days: the development case for v2 rests on one storm.
+- **Not built, with reasons.** Proxy-bus virtual imports/exports: forecasts exist for the four proxy buses, but the SOM (2024: -$1.2M,
+  2025: -$15.5M for interfaces) says their settlement also depends on neighbouring-market prices and on whether the schedule flows in
+  real time, which this data does not carry. Cross-hour and cross-zone dependence (a daily loss limit that treats zone-hours as
+  comonotonic is the conservative stand-in). Market impact of bids. Spike-member input (the scenarios are signal v1's quantiles only).
+
+### DART pricer result (2026-10-08): built; no candidate adopted (no edge yet); forward test pending
+Budget: 3 full runs declared, 3 used, no overrun (`dart_taker-20261008T064539-df01f1`, `dart_bidcurve-20261008T064652-ec4f0a`,
+`dart_bidcurve_indep-20261008T064758-1b154e`; one earlier invocation failed on an empty fold 1 before any run was logged and is not a
+trial). Tables: `docs/experiments/dart_pricer.md`. **All numbers are validation-fold development numbers, not out-of-sample evidence.**
+- **After fees all three candidates lose.** Net P&L over 1,065 days: `dart_taker` -$28.2k (bootstrap p of mean > 0: 0.80),
+  `dart_bidcurve` -$33.3k (0.83), `dart_bidcurve_indep` -$38.4k (0.88; Holm p = 1.0 for each). Baselines on the same rows: no trade $0,
+  DART v2 +$231.4k (reproduces `dart_v2.md`), naive last-known spread -$46.2k. Without the risk limits the candidates are -$20.3k, -$35.6k
+  and -$52.5k; at a $0.25 cost they are still negative (-$17.8k, -$21.6k, -$26.2k).
+- **The declared null did its job.** With the realized (DA, RT) pairs shuffled across days, the candidates' positions earn *more* than they
+  really did (null mean -$9.6k to -$16.4k against real -$28.2k to -$38.4k): their direction has no skill. The realized spread when they are
+  INC or DEC is -$0.03 / +$0.03 per MWh (DART v2: +$1.64 / -$1.15). DART v2 sits above the null's 95th percentile (the naive rule's real
+  P&L is above its null too, but it still loses money). The adoption gate (positive mean daily P&L over all days and excluding Winter Storm Elliott, above the null) fails for
+  all three, so **no pricer is adopted and nothing is added to the daily job**.
+- **What was learned.** The bid curve does not help (-$33.3k vs -$28.2k for fixed bids): the copula-implied conditional spread given the
+  cleared DA price is not exploitable on these forecasts. The Gaussian copula against independent draws is worth +$5.1k, small and the same
+  sign as M4's CRPS gain, but both are negative. Signal v1's DA and RT quantile rows are close to median forecasts and the scenarios' spread
+  mean does not tell INC from DEC; DART v2's directional information comes from the spike member's RT mean and from large-spread days. The
+  risk limits bind on 29-52% of days; they cost the fixed-bid candidate $7.8k and saved the bid curves $2.2k (copula) and $14.1k (independent). DART v2's validation result itself rests on Winter Storm
+  Elliott: without 2022-12-23/24 it is +$54.8k (mean $51.5/day, bootstrap p 0.21 against 0.03 with them).
+- **Forward test: pending.** The 36 validation folds cannot confirm anything, and the holdout is spent. The only clean test is the forward
+  window, and the only live DART rule is v2 (`live_dart`), so `lmp dart-score` scores **DART v2's** forward record by default (a pricer
+  candidate with `--candidate`; `lmp dart-price --candidate X` records pricer paper positions to `live_dart_pricer` for anyone who wants that
+  record, outside the daily job). It refuses to score before 365 counted settled days, runs the declared one-sided block-bootstrap test once,
+  and stores the result in `dart_forward_score`. Power is 38% at 365 days for a validation-sized effect and 80% only near 2,000-3,000 days
+  (13% at 365 days without the two Elliott days), so "not shown" will not mean "no edge". **The daily job is disabled; the window cannot
+  accrue until it is re-enabled** (`scripts/daily.py` already runs `lmp positions`, which is what the score reads). Only 2026-10-06 exists.
+- **Declaration corrections, made after the runs and before any forward day** (no result changed): (1) fold 1 (2022-10) has no stored
+  signal quantiles, so no strategy trades it and the first priced fold (2022-11) has no earlier PIT pairs, so it uses rho = 0 for every
+  zone (the declaration said "folds 1..36"; it is 2..36, 1,065 days). (2) With no pricer adopted, the forward score defaults to DART v2
+  (same window rule, N and test). (3) The window start is the code constant `FORWARD_START` in `dart_pricer_run.py` (set to 2026-10-10: the daily job was re-enabled
+  on 2026-10-08 and first runs 2026-10-09 04:30, so 10-10 is the first delivery day it can record before the day begins). It was
+  committed before that day, because coverage (>= 80% of calendar days since the start) is measured from it. Days before it never count,
+  so 2026-10-06 is excluded.
+- Limits: costs are an assumption (fee source not retrieved); price taker; no cross-hour or cross-zone dependence; the pricer has no spike
+  member input; proxy buses not built.
+
 ## M7
 Single holdout evaluation, freeze signal v1.
