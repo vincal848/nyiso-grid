@@ -131,19 +131,30 @@ def residual_history(signal: str) -> pd.DataFrame:
     return w.assign(r_da=w["y_da"] - w["mean_da"], r_rt=w["y_rt"] - w["mean_rt"])
 
 
-def live_inputs(d, signal: str) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Live forecast rows (total price, QCOLS) and spike-member rows for delivery day D."""
+def live_rows(d, signal: str) -> pd.DataFrame:
+    """Live forecast rows (total price, QCOLS) for delivery day D."""
     from lmpsignal import registry
 
     with registry.connect(read_only=True) as con:
         f = con.execute(f"""SELECT issue_utc, delivery_date, ts_utc, zone, hour_local, market, {', '.join(QCOLS)}
                             FROM live_forecasts WHERE signal = ? AND delivery_date = ? AND component = 'total'""",
                         [signal, d]).df()
+    if f.empty:
+        raise ValueError(f"need live_forecasts for {d}: run `lmp forecast` first")
+    return f
+
+
+def live_inputs(d, signal: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Live forecast rows and spike-member rows for delivery day D."""
+    from lmpsignal import registry
+
+    f = live_rows(d, signal)
+    with registry.connect(read_only=True) as con:
         has = con.execute("SELECT count(*) FROM duckdb_tables() WHERE table_name = 'live_spike'").fetchone()[0]
         sp = con.execute("""SELECT ts_utc, zone, p_spike, mean AS spike_mean FROM live_spike
                             WHERE delivery_date = ? AND model = 'spike_full'""", [d]).df() if has else pd.DataFrame()
-    if f.empty or sp.empty:
-        raise ValueError(f"need live_forecasts and live_spike for {d}: run `lmp forecast` and `lmp risk` first")
+    if sp.empty:
+        raise ValueError(f"need live_spike for {d}: run `lmp risk` first")
     return f, sp
 
 

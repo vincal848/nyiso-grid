@@ -373,6 +373,49 @@ def paper():
     typer.echo(f"total {g['pnl'].sum():,.2f} $ over {len(g)} days, {g['mwh'].sum():,.1f} MWh "
                f"({g['pnl'].sum() / g['mwh'].sum():.2f} $/MWh)" if g["mwh"].sum() else "")
 
+@app.command("dart-pricer")
+def dart_pricer_cmd(name: str = typer.Argument(..., help="dart_taker | dart_bidcurve | dart_bidcurve_indep"),
+                    smoke: int = typer.Option(0, help="Only the last N folds, not logged")):
+    """DART pricer: one candidate over the validation folds (development only), logged as a run."""
+    from lmpsignal import cv, dart_pricer_run
+
+    rid = dart_pricer_run.run(name, cv.folds()[-smoke:] if smoke else None, log=not smoke)
+    typer.echo(f"{name} -> {rid or '(smoke test, not logged)'}")
+
+
+@app.command("dart-pricer-report")
+def dart_pricer_report():
+    """Write docs/experiments/dart_pricer.md from the three logged candidate runs (development only)."""
+    from pathlib import Path
+
+    from lmpsignal import dart_pricer_report as rep
+
+    out = Path(__file__).resolve().parents[2] / "docs" / "experiments" / "dart_pricer.md"
+    out.write_text(rep.build(), encoding="utf-8")
+    typer.echo(f"wrote {out}")
+
+
+@app.command("dart-price")
+def dart_price(day: str = typer.Option(None, "--date", help="Delivery day (default: tomorrow)")):
+    """Live DART pricer positions (the adopted candidate) for one delivery day -> live_dart_pricer. Needs `lmp forecast`."""
+    from lmpsignal import dart_pricer_run as run
+    from lmpsignal.presets import DART_PRICER
+
+    d = _day(day)
+    out = run.live_price(d, DART_PRICER)
+    by = out.groupby("zone")["x_mw"].sum().round(1)
+    typer.echo(f"dart-price {d} ({DART_PRICER}): {(out['x_mw'] > 0).sum()} zone-hours, MW by zone: "
+               + ", ".join(f"{z} {v:.1f}" for z, v in by.items()))
+
+
+@app.command("dart-score")
+def dart_score():
+    """Forward score of the adopted DART pricer: progress until N counted settled days, then the declared test (once)."""
+    from lmpsignal import dart_pricer_run as run
+    from lmpsignal.presets import DART_PRICER
+
+    typer.echo(run.score(DART_PRICER))
+
 
 @app.command()
 def dart(rule: str = typer.Option("v1", help="v1 (prototype) or v2 (M4: distribution means, spike mix, DA/RT correlation)")):
