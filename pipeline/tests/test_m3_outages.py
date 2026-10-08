@@ -1,7 +1,6 @@
 """M3 outage-to-constraint mapping: name parsing, as-of availability, in-fold lift."""
 import numpy as np
 import pandas as pd
-
 from lmpsignal.structural.outages import OutageMap, constraint_tokens, equipment_tokens
 
 

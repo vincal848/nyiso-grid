@@ -129,7 +129,7 @@ def _fit_predict_series(X_tr: pd.DataFrame, Y_tr: pd.DataFrame, X_te: pd.DataFra
         # every price input block uses its own robust scale
         pp = {c: _vst_params(Xw_f[c].to_numpy()) for c in price_cols}
 
-        def transform(X):
+        def transform(X, pp=pp, mu=mu, sd=sd):
             out = np.empty((len(X), X.shape[1]))
             for j, c in enumerate(X.columns):
                 out[:, j] = _vst(X[c].to_numpy(), *pp[c]) if c in pp else (X[c].to_numpy() - mu[c]) / sd[c]
@@ -160,6 +160,22 @@ def _fit_predict_series(X_tr: pd.DataFrame, Y_tr: pd.DataFrame, X_te: pd.DataFra
     return np.nanmean(np.stack(preds), axis=0)
 
 
+
+def _parallel(fn, arglist: list[tuple], n_jobs: int, retries: int = 2) -> list:
+    """joblib/loky map with retries. On Windows a loky worker occasionally dies at start-up (0x800703e5 ->
+    BrokenProcessPool / TerminatedWorkerError); the fits are deterministic, so retrying with a fresh pool (and finally
+    in-process) returns the same results instead of failing the run."""
+    from concurrent.futures.process import BrokenProcessPool
+
+    from joblib.externals.loky.process_executor import TerminatedWorkerError
+
+    for attempt in range(retries + 1):
+        try:
+            return Parallel(n_jobs=n_jobs, backend="loky")(delayed(fn)(*a) for a in arglist)
+        except (BrokenProcessPool, TerminatedWorkerError) as e:
+            print(f"  LEAR worker pool failed ({type(e).__name__}), attempt {attempt + 1}/{retries + 1}", flush=True)
+    return [fn(*a) for a in arglist]
+
 class LEAR(Model):
     name = "lear"
 
@@ -185,7 +201,7 @@ class LEAR(Model):
         """Build the daily grids once for the whole run (inputs are as-of; targets only used via lags)."""
         self.design = Design(full_panel, self.inputs)
 
-    def fit(self, train: pd.DataFrame) -> "LEAR":
+    def fit(self, train: pd.DataFrame) -> LEAR:
         self._train = train
         return self
 
@@ -206,8 +222,8 @@ class LEAR(Model):
         # Build each series' (small) design matrices here and ship only those to the workers.
         tasks = [((m, c, z), D.features(m, c, z, tr_dates, energy), D.target(m, c, z, tr_dates),
                   D.features(m, c, z, te_dates, energy)) for m, c, z, energy in series]
-        outs = Parallel(n_jobs=self.n_jobs, backend="loky")(
-            delayed(_fit_predict_series)(X_tr, Y_tr, X_te, self.windows, self.clip) for _, X_tr, Y_tr, X_te in tasks)
+        outs = _parallel(_fit_predict_series, [(X_tr, Y_tr, X_te, self.windows, self.clip) for _, X_tr, Y_tr, X_te in tasks],
+                         self.n_jobs)
         results = [(t[0], P) for t, P in zip(tasks, outs)]
         grids: dict[tuple[str, str], list[pd.DataFrame]] = {}
         for (m, c, z), P in results:
@@ -323,8 +339,8 @@ class LEAR2(LEAR):
         zones = sorted(test["zone"].unique())
         tasks = [((m, c, z), D.features(m, c, z, tr_dates, energy), D.target(m, c, z, tr_dates),
                   D.features(m, c, z, te_dates, energy)) for m, c, z, energy in self._series(zones)]
-        outs = Parallel(n_jobs=self.n_jobs, backend="loky")(
-            delayed(_fit_predict_series_v2)(X_tr, Y_tr, X_te, self.windows) for _, X_tr, Y_tr, X_te in tasks)
+        outs = _parallel(_fit_predict_series_v2, [(X_tr, Y_tr, X_te, self.windows) for _, X_tr, Y_tr, X_te in tasks],
+                         self.n_jobs)
         variants = {"mean": None, **{f"mean_w{w or 'all'}": w for w in self.windows}}
         frames = {}
         for col, w in variants.items():

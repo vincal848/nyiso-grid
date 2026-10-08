@@ -16,8 +16,8 @@ from __future__ import annotations
 import duckdb
 import pandas as pd
 
-from nyiso.config import DB_PATH
 from lmpsignal.config import ISSUE_HOUR_ET
+from nyiso.config import DB_PATH
 
 
 def _con() -> duckdb.DuckDBPyConnection:
@@ -29,7 +29,7 @@ def _con() -> duckdb.DuckDBPyConnection:
 def shadow_prices(start: str, end: str) -> pd.DataFrame:
     """Long table: market, d (local date), hr (local hour), key, mu. Only binding (non-zero) rows."""
     con = _con()
-    df = con.execute(f"""
+    df = con.execute("""
         SELECT 'da' AS market, CAST(ts_local AS DATE) AS d, hour(ts_local) AS hr,
                facility || ' | ' || contingency AS key, avg(shadow_price) AS mu
         FROM (SELECT ts_local, facility, contingency, sum(shadow_price) AS shadow_price

@@ -14,6 +14,7 @@ joint distribution yet: M4), every zone-hour bid at the forecast, no credit or c
 from __future__ import annotations
 
 import json
+from datetime import UTC
 
 import duckdb
 import numpy as np
@@ -235,7 +236,7 @@ def residual_history(signal: str) -> pd.DataFrame:
 
 def live_v2(d, signal: str | None = None) -> pd.DataFrame:
     """DART v2 paper positions for delivery day D -> experiments.duckdb live_dart."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from lmpsignal import registry
     from lmpsignal.evaluate import QCOLS
@@ -267,7 +268,7 @@ def live_v2(d, signal: str | None = None) -> pd.DataFrame:
     w["spread_fcst"], w["spread_scale"], w["x_mw"] = v2_position(w["dmean_da"], m_rt, w["sd_da"], w["sd_rt"], w["rho"])
     out = w[["issue_utc", "delivery_date", "ts_utc", "zone", "hour_local", "spread_fcst", "spread_scale", "rho",
              "p_spike", "x_mw"]].assign(rule="v2", signal=signal, git_commit=registry.git_commit(),
-                                        created_utc=datetime.now(timezone.utc))
+                                        created_utc=datetime.now(UTC))
     with registry.connect() as con:
         con.execute(LIVE_SCHEMA)
         con.execute("DELETE FROM live_dart WHERE rule = 'v2' AND delivery_date = ?", [d])

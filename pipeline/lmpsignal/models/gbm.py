@@ -41,7 +41,7 @@ class GBM(Model):
         X["zone"] = pd.Categorical(df["zone"], categories=self._zones)
         return X
 
-    def fit(self, train: pd.DataFrame) -> "GBM":
+    def fit(self, train: pd.DataFrame) -> GBM:
         if self.window_days:
             train = train[train["delivery_date"] > train["delivery_date"].max() - pd.Timedelta(days=self.window_days)]
         self._zones = sorted(train["zone"].unique())

@@ -43,7 +43,7 @@ class Naive(Model):
     def _long(self, df: pd.DataFrame) -> pd.DataFrame:
         return to_long(df, {(m, c): self._point(df, c) for m in MARKETS for c in COMPONENTS})
 
-    def fit(self, train: pd.DataFrame) -> "Naive":
+    def fit(self, train: pd.DataFrame) -> Naive:
         long = self._long(train).merge(truth_long(train)[["ts_utc", "zone", "market", "component", "y"]],
                                        on=["ts_utc", "zone", "market", "component"])
         self.eq.fit(long)

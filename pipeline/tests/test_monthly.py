@@ -3,7 +3,6 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
-
 from lmpsignal import monthly as mo
 from lmpsignal.config import INTERNAL_ZONES
 

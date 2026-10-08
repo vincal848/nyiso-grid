@@ -15,6 +15,8 @@ jobs:
           python-version: "3.12"
       - name: Install
         run: uv sync --extra dev
+      - name: Lint
+        run: uv run ruff check src pipeline scripts tests
       # Tests that need the local warehouse (data/, git-ignored) skip themselves when it is absent.
       - name: Test
         run: uv run pytest -q

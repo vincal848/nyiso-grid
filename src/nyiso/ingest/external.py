@@ -11,7 +11,7 @@ from __future__ import annotations
 import io
 import json
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pandas as pd
 
@@ -157,7 +157,7 @@ _OUTAGE_SCHEDULE = "https://mis.nyiso.com/public/csv/os/outage-schedule.csv"
 def outage_schedule_snapshot() -> None:
     """Save the current P-14B outage schedule to the raw cache. NYISO publishes only the current file (no archive),
     so history exists only from the first snapshot on; scripts/daily.py takes one every morning."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     content = http_get(_OUTAGE_SCHEDULE)
     if content is None:
         return

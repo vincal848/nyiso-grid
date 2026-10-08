@@ -1,7 +1,6 @@
 """Load correction: training never reaches the scored block; the correction is applied multiplicatively."""
 import numpy as np
 import pandas as pd
-
 from lmpsignal import cv, loadfix
 from lmpsignal.config import EMBARGO_DAYS
 

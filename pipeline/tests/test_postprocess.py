@@ -2,8 +2,8 @@
 import numpy as np
 import pandas as pd
 import pytest
-
-from lmpsignal import cv, postprocess as pp
+from lmpsignal import cv
+from lmpsignal import postprocess as pp
 from lmpsignal.evaluate import QCOLS
 from lmpsignal.models.lear import _ivst, _vst
 

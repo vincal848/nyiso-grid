@@ -6,12 +6,20 @@ from pathlib import Path
 
 import pandas as pd
 
-from nyiso.config import ROOT
 from lmpsignal import registry, runner
-from lmpsignal.config import (BURN_IN_START, EMBARGO_DAYS, HOLDOUT_END, HOLDOUT_START, ISSUE_HOUR_ET, QUANTILES,
-                              VALIDATION_END, VALIDATION_START)
+from lmpsignal.config import (
+    BURN_IN_START,
+    EMBARGO_DAYS,
+    HOLDOUT_END,
+    HOLDOUT_START,
+    ISSUE_HOUR_ET,
+    QUANTILES,
+    VALIDATION_END,
+    VALIDATION_START,
+)
 from lmpsignal.evaluate import diebold_mariano
 from lmpsignal.panel import FEATURES, KEYS, MASKS, TARGETS
+from nyiso.config import ROOT
 
 DOCS = ROOT / "docs"
 
@@ -87,7 +95,7 @@ def write_scoreboard(models: list[str] | None = None) -> Path:
         "15 NYISO zones (11 internal + 4 external proxies).",
         f"- Validation: {VALIDATION_START} → {VALIDATION_END} (exclusive), monthly rolling-origin folds, expanding "
         f"window from {BURN_IN_START}, {EMBARGO_DAYS}-day embargo. Holdout {HOLDOUT_START} → {HOLDOUT_END} untouched.",
-        f"- **Primary metrics: CRPS (whole distribution) and RMSE (conditional mean).** MAE is secondary: it rewards "
+        "- **Primary metrics: CRPS (whole distribution) and RMSE (conditional mean).** MAE is secondary: it rewards "
         "the median, and for zero-inflated targets such as congestion an always-zero forecast can win on MAE while "
         "being useless for trading. Tables are sorted by CRPS.",
         f"- rMAE = MAE / MAE of `{runner.REFERENCE}` on the same rows. CRPS from {len(QUANTILES)} stored quantiles "

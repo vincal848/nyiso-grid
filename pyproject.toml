@@ -21,7 +21,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
 # M6 neural members (DDNN). CUDA wheels on Windows/Linux; install with `uv sync --extra dev --extra deep`.
 deep = ["torch>=2.5"]
 
@@ -47,3 +50,11 @@ explicit = true
 [tool.pytest.ini_options]
 testpaths = ["tests", "pipeline/tests"]
 pythonpath = ["src", "pipeline"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "E731", "E741", "B905"]   # long lines (tables, SQL); lambda assignment; short names; zip strict (behavior change)

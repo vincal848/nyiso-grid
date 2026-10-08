@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import numpy as np
@@ -199,7 +199,7 @@ def run_zone_table(run: date, cells: pd.DataFrame) -> pd.DataFrame:
         "refl40": (values["refc"] >= 40).astype(np.float32),
         "lightning": values["ltng"],
     }
-    run_utc = datetime(run.year, run.month, run.day, RUN_HOUR_UTC, tzinfo=timezone.utc)
+    run_utc = datetime(run.year, run.month, run.day, RUN_HOUR_UTC, tzinfo=UTC)
     import warnings
 
     warnings.filterwarnings("ignore", message="Mean of empty slice")       # a field missing for a run -> NaN

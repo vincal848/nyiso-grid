@@ -98,7 +98,8 @@ def loadfix(
     """Weather-to-load correction of the ISOLF D-2 forecast, scored on the validation folds."""
     import time
 
-    from lmpsignal import cv, loadfix as lf, panel
+    from lmpsignal import cv, panel
+    from lmpsignal import loadfix as lf
     from lmpsignal.config import VALIDATION_END
 
     t = time.time()
@@ -199,7 +200,8 @@ def spike(variant: str = typer.Argument("full", help="full | no_storm (declared 
     """M3b RT spike member over the validation folds (budget: 3 full runs, see docs/ROADMAP.md)."""
     import time
 
-    from lmpsignal import cv, panel, spike as sp
+    from lmpsignal import cv, panel
+    from lmpsignal import spike as sp
     from lmpsignal.config import VALIDATION_END
 
     t = time.time()
@@ -367,6 +369,15 @@ def graphs(model: str = typer.Option("struct_cong_l2", help="Structural model wh
     for name, n in g.build(rid).items():
         typer.echo(f"  {name:<20} {n:>10,}")
     typer.echo(f"wrote {g.STRUCTURE_DB} from {rid}")
+
+
+@app.command("panel-diff")
+def panel_diff(run_a: str, run_b: str):
+    """Which panel columns differ between the panels two runs received (runs from 2026-10-05 on)."""
+    from lmpsignal import registry
+
+    d = registry.panel_diff(run_a, run_b)
+    typer.echo("identical panels" if d.empty else d.to_string(index=False))
 
 
 @app.command()

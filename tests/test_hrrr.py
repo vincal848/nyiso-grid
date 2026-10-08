@@ -29,7 +29,7 @@ def test_zone_aggregates_units_and_delivery_window(monkeypatch):
     monkeypatch.setattr(hrrr, "zone_cells", lambda: cells)
     monkeypatch.setattr(hrrr, "run_cells", _fake_run)
     df = hrrr.weather_hrrr(date(2024, 7, 16), date(2024, 7, 16), workers=1)
-    for zone, g in df.groupby("zone"):
+    for _zone, g in df.groupby("zone"):
         assert len(g) == 24                                             # exactly the local hours of 2024-07-16
         local = g["ts_utc"].dt.tz_convert("America/New_York")
         assert (local.dt.date == date(2024, 7, 16)).all()

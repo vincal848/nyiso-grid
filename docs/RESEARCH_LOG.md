@@ -60,6 +60,6 @@ Status: `open` (not started), `tried` (result recorded), `blocked` (needs data o
 
 | Idea | Why | Status |
 |---|---|---|
-| Retry LEAR when a loky worker dies on Windows (0x800703e5) | `lear_wx` failed once at worker start-up, re-run succeeded | open |
-| Install ruff in the dev environment | Lint was not run on recent commits | open |
-| Version the panel per run (snapshot or content hash per column) | `gbm_l1` could not be reproduced exactly for M7: panel changed after the validated runs (docs/SIGNAL_V1.md) | open |
+| Retry LEAR when a loky worker dies on Windows (0x800703e5) | `lear_wx` failed once at worker start-up, re-run succeeded | done (2026-10-05): two retries with a fresh pool, then in-process (deterministic fits, same output) |
+| Install ruff in the dev environment | Lint was not run on recent commits | done (2026-10-05: ruff in `dev`, CI lint step; rules E/F/W/I/B/UP; `ruff format` not adopted, it would rewrite aligned comments in 61 files) |
+| Version the panel per run (snapshot or content hash per column) | `gbm_l1` could not be reproduced exactly for M7: panel changed after the validated runs (docs/SIGNAL_V1.md) | done (2026-10-05): runs store the exact panel once per content hash (`runs.panel_hash`, data/experiments/panel_snapshots, ~39 MB each), `lmp panel-diff`; live forecasts keep their day's panel rows. Runs before this date are not covered |

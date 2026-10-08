@@ -23,8 +23,8 @@ import re
 import numpy as np
 import pandas as pd
 
-from nyiso.config import TZ
 from lmpsignal.structural import constraints as cs
+from nyiso.config import TZ
 
 _SCH_SKIP = {"NYISO", "NY", "LIMIT", ""}
 _CTG_PREFIX = re.compile(r"^[A-Z]{2,4}:\s*")

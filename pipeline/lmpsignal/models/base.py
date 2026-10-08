@@ -20,7 +20,7 @@ class Model:
     def config(self) -> dict:
         return {}
 
-    def fit(self, train: pd.DataFrame) -> "Model":
+    def fit(self, train: pd.DataFrame) -> Model:
         return self
 
     def predict(self, test: pd.DataFrame) -> pd.DataFrame:
@@ -37,7 +37,7 @@ class EmpiricalQuantiles:
 
     MIN_OBS = 60   # below this many residuals per (zone, hour) cell, use the zone's pooled-hours quantiles
 
-    def fit(self, train_long: pd.DataFrame) -> "EmpiricalQuantiles":
+    def fit(self, train_long: pd.DataFrame) -> EmpiricalQuantiles:
         cutoff = train_long["delivery_date"].max() - pd.Timedelta(days=self.lookback_days)
         t = train_long[(train_long["delivery_date"] > cutoff) & train_long["y"].notna() & train_long["mean"].notna()]
         resid = t.assign(r=t["y"] - t["mean"])

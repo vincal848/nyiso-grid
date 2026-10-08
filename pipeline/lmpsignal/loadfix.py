@@ -34,9 +34,9 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
-from nyiso.config import DB_PATH
 from lmpsignal import cv, registry
 from lmpsignal.config import BURN_IN_START, EMBARGO_DAYS, FEATURES_DB, INTERNAL_ZONES, VALIDATION_END
+from nyiso.config import DB_PATH
 
 BASE_T = 18.3
 LEVEL = ["hrrr_temp_zone", "hrrr_dewpoint_zone", "hrrr_wind80_zone", "hrrr_cloud_zone", "hrrr_temp_zone_dmean",
@@ -107,7 +107,7 @@ class LinearCorrection:
             cols.extend((terms * (block == b)[:, None]).T)
         return np.nan_to_num(np.column_stack(cols))
 
-    def fit(self, d: pd.DataFrame) -> "LinearCorrection":
+    def fit(self, d: pd.DataFrame) -> LinearCorrection:
         self.coef = {}
         for z, g in d.groupby("zone", observed=True):
             X, y = self._X(g), g["r"].to_numpy()
@@ -142,7 +142,7 @@ class GBMCorrection:
         return {"model": "LightGBM (L2) on relative ISOLF D-2 error, pooled over zones", "params": self.params,
                 "features": self.features}
 
-    def fit(self, d: pd.DataFrame) -> "GBMCorrection":
+    def fit(self, d: pd.DataFrame) -> GBMCorrection:
         self.m = lgb.LGBMRegressor(**self.params).fit(d[self.features], d["r"], categorical_feature=["zone"])
         return self
 
@@ -200,7 +200,7 @@ def run(kind: str, p: pd.DataFrame, folds: list[cv.Fold] | None = None, log: boo
     ok = d["r"].notna() & d["load_fcst_zone"].notna() & d["hrrr_temp_zone"].notna()
     run_id = registry.start_run(model.name + suffix, {**model.config(), "folds": len(folds), "embargo_days": EMBARGO_DAYS,
                                                       "first_fold": folds[0].name, "last_fold": folds[-1].name},
-                                int(ok.sum())) if log else None
+                                int(ok.sum()), panel=p) if log else None
     try:
         for f in folds:
             t0 = time.time()

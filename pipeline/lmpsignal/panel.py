@@ -23,9 +23,9 @@ from datetime import date, timedelta
 import duckdb
 import pandas as pd
 
-from nyiso.config import DB_PATH, WEATHER_STATIONS
 from lmpsignal.calendar import holiday_table
 from lmpsignal.config import BURN_IN_START, FEATURES_DB, ISSUE_HOUR_ET, LOCATIONS
+from nyiso.config import DB_PATH, WEATHER_STATIONS
 
 ET = "'America/New_York'"
 
