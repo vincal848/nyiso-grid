@@ -3,7 +3,8 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
-from lmpsignal import cv, dart, nodes
+from lmpsignal import cv, nodes
+from lmpsignal import dart_rules as dart
 from lmpsignal.cv import month_fold
 from lmpsignal.panel import future_grid
 
@@ -104,9 +105,9 @@ def test_dart_v2_rho_uses_only_the_prior_year():
     r = np.random.default_rng(0).normal(size=len(days))
     resid = pd.DataFrame({"delivery_date": days, "zone": "WEST", "r_da": r,
                           "r_rt": np.where(days < "2025-01-01", r, -r)})                # sign flips in 2025
-    assert np.isclose(dart._rho(resid, pd.Timestamp("2025-01-01"))["WEST"], 1.0)
-    assert np.isclose(dart._rho(resid, pd.Timestamp("2026-01-01"))["WEST"], -1.0)
-    assert dart._rho(resid, pd.Timestamp("2023-06-01")).empty
+    assert np.isclose(dart.rho_by_zone(resid, pd.Timestamp("2025-01-01"))["WEST"], 1.0)
+    assert np.isclose(dart.rho_by_zone(resid, pd.Timestamp("2026-01-01"))["WEST"], -1.0)
+    assert dart.rho_by_zone(resid, pd.Timestamp("2023-06-01")).empty
 
 
 def test_lear_parallel_retries_then_runs_in_process(monkeypatch):
