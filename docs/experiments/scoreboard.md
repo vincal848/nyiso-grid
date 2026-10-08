@@ -3,7 +3,7 @@
 _Generated 2026-10-05 00:38 by `lmp report`._
 
 - Forecast: hourly DA and RT prices for delivery day D, issued 05:00 ET on D−1; 15 NYISO zones (11 internal + 4 external proxies).
-- Validation: 2022-10-01 → 2025-10-01 (exclusive), monthly rolling-origin folds, expanding window from 2021-10-01, 7-day embargo. Holdout 2025-10-01 → 2026-10-01 untouched.
+- Validation: 2022-10-01 → 2025-10-01 (exclusive), monthly rolling-origin folds, expanding window from 2021-10-01, 7-day embargo. Holdout 2025-10-01 → 2026-10-01 is spent (opened once, for M7); scores here are validation only.
 - **Primary metrics: CRPS (whole distribution) and RMSE (conditional mean).** MAE is secondary: it rewards the median, and for zero-inflated targets such as congestion an always-zero forecast can win on MAE while being useless for trading. Tables are sorted by CRPS.
 - rMAE = MAE / MAE of `lago_naive` on the same rows. CRPS from 21 stored quantiles (models whose quantiles come from their own out-of-sample errors have none in the first fold, so their CRPS covers folds 2..36). RT hours flagged in `rt_flag` are not scored.
 - Components are additive: total = energy + loss + congestion (congestion = −MCC).

@@ -40,7 +40,7 @@
   time; `lmp panel` fails if any `_avail_*` audit column exceeds `issue_utc`. Document every new
   feature in `panel.FEATURES` (tests enforce it).
 - Validation = 36 monthly rolling-origin folds (2022-10..2025-09) with a 7-day embargo. The final
-  holdout (2025-10..2026-09) is locked by `config.guard`; unlock it only for the single M7 evaluation.
+  holdout (2025-10..2026-09) is locked by `config.guard`; it was unlocked once, for the M7 evaluation (done), and is spent: never unlock it again.
 - Structural estimates (shift factors, regimes) must be fit inside each fold on training data only.
 - Fit once, post-process many times: changes to model *outputs* (clipping, window averaging,
   combination, calibration) go through `lmp post` over stored OOS predictions, never a refit.
@@ -79,6 +79,7 @@
 - `uv run lmp risk [--date D]` / `uv run lmp positions [--date D]` / `uv run lmp paper` — live spike risk, DART v2 paper
   positions, paper-trading track record
 - `uv run lmp m5 <models> [--window validation|holdout]` / `uv run lmp monthly` — M5 monthly DA products (runs / live)
+- `uv run lmp scen <indep|gauss|emp|gpd>` / `uv run lmp scen-report` — M4 joint DA/RT scenarios and GPD tail splice over signal v1 (validation) / results page
 - `uv run lmp shadow [--date D] [--score]` — M8 Chronos-2 live shadow forecast / its live record vs signal v1
 - `uv run python scripts/daily.py` — daily job: data refresh, build, panel, forecast, nodes, risk, positions, monthly, shadow (04:30 ET)
 - `uv run pytest` and `uv run ruff check src pipeline scripts tests` (CI runs both)

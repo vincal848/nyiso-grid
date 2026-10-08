@@ -19,7 +19,7 @@ pricing. Those pricers are the next phase; this repository builds and validates 
 |---|---|
 | **Data** | ~455M rows of NYISO MIS data (Oct 2021 → Sep 2026) in Parquet + DuckDB: DA/RT prices for 15 zones and ~750 nodes, load and load forecasts, fuel mix, binding constraints, interface flows, reserve prices, transmission outage schedules; plus NOAA weather (station observations, HRRR), GFS forecast vintages and Henry Hub gas. DA zonal prices go back to 2015 for the monthly forecasts |
 | **Forecast** | Hourly DA and RT prices for day D, issued 05:00 ET on D−1 (the DAM bid deadline), with 21 quantiles per hour and zone |
-| **Validation** | 36 monthly rolling-origin folds (Oct 2022 → Sep 2025), 7-day embargo, 12-month holdout locked in code, every trial logged |
+| **Validation** | 36 monthly rolling-origin folds (Oct 2022 → Sep 2025), 7-day embargo, 12-month holdout locked in code and spent once (M7), every trial logged |
 | **Stack** | Python, DuckDB, Parquet, pandas, scikit-learn, LightGBM, PyTorch (optional), FastAPI, MapLibre, ECharts, GitHub Actions |
 
 ## Results (validation, 36 out-of-sample months)
@@ -172,7 +172,8 @@ Done: the warehouse and dashboard, then the forecasting milestones (details in `
   the January 2026 shock (`docs/SIGNAL_V1.md`).
 - **Later milestones, each with a declared budget; none replaced signal v1:**
   - M3b RT spike model: −12% CRPS in spike hours, but the pooled gain was not significant.
-  - M4 robust combination: not adopted.
+  - M4 robust combination: not adopted. M4 distributional step: a Gaussian-copula joint DA/RT sampler beats independent
+    draws on spread CRPS (−2%) and is kept for the DART/TCC pricers; the GPD tail splice and an empirical copula were not adopted.
   - M6 distributional neural network ensemble: not adopted. It fails in cold-weather shock months.
 - **M5 monthly DA forecasts** (zones, on/off-peak, 1–6 months ahead): a seasonal norm beat a gas × heat-rate
   anchor, which has no gas forward curve to work with.

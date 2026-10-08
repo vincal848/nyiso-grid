@@ -94,7 +94,7 @@ def write_scoreboard(models: list[str] | None = None) -> Path:
         f"- Forecast: hourly DA and RT prices for delivery day D, issued {ISSUE_HOUR_ET:02d}:00 ET on D−1; "
         "15 NYISO zones (11 internal + 4 external proxies).",
         f"- Validation: {VALIDATION_START} → {VALIDATION_END} (exclusive), monthly rolling-origin folds, expanding "
-        f"window from {BURN_IN_START}, {EMBARGO_DAYS}-day embargo. Holdout {HOLDOUT_START} → {HOLDOUT_END} untouched.",
+        f"window from {BURN_IN_START}, {EMBARGO_DAYS}-day embargo. Holdout {HOLDOUT_START} → {HOLDOUT_END} is spent (opened once, for M7); scores here are validation only.",
         "- **Primary metrics: CRPS (whole distribution) and RMSE (conditional mean).** MAE is secondary: it rewards "
         "the median, and for zero-inflated targets such as congestion an always-zero forecast can win on MAE while "
         "being useless for trading. Tables are sorted by CRPS.",
