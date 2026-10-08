@@ -10,7 +10,8 @@ import duckdb
 import pandas as pd
 
 from lmpsignal import registry
-from nyiso.config import DB_PATH
+from nyiso.config import CURATED, DB_PATH
+from nyiso.ingest.tcc import TCC_KEYS
 
 
 def warehouse_df(sql: str, params: Sequence = (), **tables: pd.DataFrame) -> pd.DataFrame:
@@ -29,3 +30,14 @@ def experiments_df(sql: str, params: Sequence = ()) -> pd.DataFrame:
     """Run a read-only query on the experiments registry (retries while another process holds the lock)."""
     with registry.connect(read_only=True) as con:
         return con.execute(sql, list(params)).df()
+
+
+def tcc_df(sql: str, params: Sequence = ()) -> pd.DataFrame:
+    """Query the curated TCC tables (data/curated/tcc_*) directly, so no warehouse build is needed to read them."""
+    con = duckdb.connect()
+    try:
+        for k in TCC_KEYS:
+            con.execute(f"CREATE VIEW {k} AS SELECT * FROM read_parquet('{(CURATED / k / '**' / '*.parquet').as_posix()}')")
+        return con.execute(sql, list(params)).df()
+    finally:
+        con.close()

@@ -243,6 +243,28 @@ def scen_report():
     typer.echo(body)
 
 
+@app.command("tcc")
+def tcc_cmd(name: str = typer.Argument(..., help="tcc_struct_trailing | tcc_struct_seasonal | tcc_struct_blend_illiquid"),
+            smoke: int = typer.Option(0, help="Only the first N auction periods, not logged")):
+    """M9 TCC pricer: one candidate over all past auctions (walk-forward), logged as a run."""
+    from lmpsignal.tcc import run
+
+    rid = run.run(name, log=not smoke, first_n=smoke or None)
+    typer.echo(f"{name} -> {rid or '(smoke test, not logged)'}")
+
+
+@app.command("tcc-report")
+def tcc_report():
+    """Write docs/experiments/tcc_pricer.md from the three logged M9 runs."""
+    from pathlib import Path
+
+    from lmpsignal.tcc import report
+
+    out = Path(__file__).resolve().parents[2] / "docs" / "experiments" / "tcc_pricer.md"
+    out.write_text(report.build(), encoding="utf-8")
+    typer.echo(f"wrote {out}")
+
+
 @app.command()
 def forecast(day: str = typer.Option(None, "--date", help="Delivery day YYYY-MM-DD (default: tomorrow, local)")):
     """Live forecast of the frozen signal for one delivery day -> experiments.duckdb live_forecasts."""
