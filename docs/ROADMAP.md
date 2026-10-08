@@ -519,5 +519,41 @@ clean test of any DART claim is the forward live window declared here. Code: `da
   real time, which this data does not carry. Cross-hour and cross-zone dependence (a daily loss limit that treats zone-hours as
   comonotonic is the conservative stand-in). Market impact of bids. Spike-member input (the scenarios are signal v1's quantiles only).
 
+### DART pricer result (2026-10-08): built; no candidate adopted (no edge yet); forward test pending
+Budget: 3 full runs declared, 3 used, no overrun (`dart_taker-20261008T064539-df01f1`, `dart_bidcurve-20261008T064652-ec4f0a`,
+`dart_bidcurve_indep-20261008T064758-1b154e`; one earlier invocation failed on an empty fold 1 before any run was logged and is not a
+trial). Tables: `docs/experiments/dart_pricer.md`. **All numbers are validation-fold development numbers, not out-of-sample evidence.**
+- **After fees all three candidates lose.** Net P&L over 1,065 days: `dart_taker` -$28.2k (bootstrap p of mean > 0: 0.80),
+  `dart_bidcurve` -$33.3k (0.83), `dart_bidcurve_indep` -$38.4k (0.88; Holm p = 1.0 for each). Baselines on the same rows: no trade $0,
+  DART v2 +$231.4k (reproduces `dart_v2.md`), naive last-known spread -$46.2k. Without the risk limits the candidates are -$20.3k, -$35.6k
+  and -$52.5k; at a $0.25 cost they are still negative (-$17.8k, -$21.6k, -$26.2k).
+- **The declared null did its job.** With the realized (DA, RT) pairs shuffled across days, the candidates' positions earn *more* than they
+  really did (null mean -$9.6k to -$16.4k against real -$28.2k to -$38.4k): their direction has no skill. The realized spread when they are
+  INC or DEC is -$0.03 / +$0.03 per MWh (DART v2: +$1.64 / -$1.15). DART v2 sits above the null's 95th percentile (the naive rule's real
+  P&L is above its null too, but it still loses money). The adoption gate (positive mean daily P&L over all days and excluding Winter Storm Elliott, above the null) fails for
+  all three, so **no pricer is adopted and nothing is added to the daily job**.
+- **What was learned.** The bid curve does not help (-$33.3k vs -$28.2k for fixed bids): the copula-implied conditional spread given the
+  cleared DA price is not exploitable on these forecasts. The Gaussian copula against independent draws is worth +$5.1k, small and the same
+  sign as M4's CRPS gain, but both are negative. Signal v1's DA and RT quantile rows are close to median forecasts and the scenarios' spread
+  mean does not tell INC from DEC; DART v2's directional information comes from the spike member's RT mean and from large-spread days. The
+  risk limits bind on 29-52% of days; they cost the fixed-bid candidate $7.8k and saved the bid curves $2.2k (copula) and $14.1k (independent). DART v2's validation result itself rests on Winter Storm
+  Elliott: without 2022-12-23/24 it is +$54.8k (mean $51.5/day, bootstrap p 0.21 against 0.03 with them).
+- **Forward test: pending.** The 36 validation folds cannot confirm anything, and the holdout is spent. The only clean test is the forward
+  window, and the only live DART rule is v2 (`live_dart`), so `lmp dart-score` scores **DART v2's** forward record by default (a pricer
+  candidate with `--candidate`; `lmp dart-price --candidate X` records pricer paper positions to `live_dart_pricer` for anyone who wants that
+  record, outside the daily job). It refuses to score before 365 counted settled days, runs the declared one-sided block-bootstrap test once,
+  and stores the result in `dart_forward_score`. Power is 38% at 365 days for a validation-sized effect and 80% only near 2,000-3,000 days
+  (13% at 365 days without the two Elliott days), so "not shown" will not mean "no edge". **The daily job is disabled; the window cannot
+  accrue until it is re-enabled** (`scripts/daily.py` already runs `lmp positions`, which is what the score reads). Only 2026-10-06 exists.
+- **Declaration corrections, made after the runs and before any forward day** (no result changed): (1) fold 1 (2022-10) has no stored
+  signal quantiles, so no strategy trades it and the first priced fold (2022-11) has no earlier PIT pairs, so it uses rho = 0 for every
+  zone (the declaration said "folds 1..36"; it is 2..36, 1,065 days). (2) With no pricer adopted, the forward score defaults to DART v2
+  (same window rule, N and test). (3) The window start is the code constant `FORWARD_START` in `dart_pricer_run.py` (set to 2026-10-09,
+  the first day after this PR is expected to land); it must be edited to the first delivery day after the daily job is re-enabled,
+  committed before that day, because coverage (>= 80% of calendar days since the start) is measured from it. Days before it never count,
+  so 2026-10-06 is excluded.
+- Limits: costs are an assumption (fee source not retrieved); price taker; no cross-hour or cross-zone dependence; the pricer has no spike
+  member input; proxy buses not built.
+
 ## M7
 Single holdout evaluation, freeze signal v1.

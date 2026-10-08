@@ -178,6 +178,11 @@ Done: the warehouse and dashboard, then the forecasting milestones (details in `
   - M9 TCC pricer (structural shift factors x constraint shadow prices vs 148 past NYISO TCC auction periods, public auction results
     ingested by `nyiso tcc`): no edge. Its trades earn what last year's persistence earns, and the market price is the better point
     forecast (`docs/experiments/tcc_pricer.md`).
+- **DART pricer (built, 2026-10-08):** virtuals priced from the joint DA/RT scenarios with a bid curve, fees and risk limits
+  (`dart_pricer.py`). On the validation folds (development only; the holdout is spent) all three candidates lose after fees, their
+  direction has no skill, and none is adopted; DART v2's own validation result rests on one storm. **Forward test pending:** `lmp dart-score`
+  scores DART v2's live record once it has 365 counted settled days (38% power for a validation-sized effect); the daily job is disabled
+  and must be re-enabled for days to accrue (`docs/experiments/dart_pricer.md`).
 - **M5 monthly DA forecasts** (zones, on/off-peak, 1–6 months ahead): a seasonal norm beat a gas × heat-rate
   anchor, which has no gas forward curve to work with.
 
@@ -186,7 +191,7 @@ forecasts, RT spike risk, **paper DART positions** (rule v2: +$231k on validatio
 and the monthly forecasts. The dashboard's Signal tab shows all of it, with the track records.
 
 Parked ideas and what was learned from each attempt are in `docs/RESEARCH_LOG.md`. Next:
-- Let the DART v2 paper record build up.
+- Re-enable the daily job and let the DART v2 forward record build up to 365 settled days (`lmp dart-score`).
 - A tuned neural network.
 - Foundation models as live shadow members (their pretraining overlaps the validation years).
 

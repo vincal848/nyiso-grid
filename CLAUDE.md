@@ -11,7 +11,8 @@
   Must not import `nyiso.api`. The dashboard API may *read* those files (never import pipeline code).
   The frozen signal (`docs/SIGNAL_V1.md`, `pipeline/lmpsignal/presets.py`) runs live via `lmp forecast`; its outputs go
   to experiments.duckdb (`live_forecasts`, `live_node_forecasts`) and data/experiments/live/. The M3b spike member
-  (`live_spike`) and DART v2 paper positions (`live_dart`) run beside it; neither is part of the signal.
+  (`live_spike`) and DART v2 paper positions (`live_dart`) run beside it; neither is part of the signal. DART code is split:
+  `dart_rules.py` / `dart_pricer.py` / `dart_forward.py` are pure (DataFrames in, out); `dart.py` and `dart_pricer_run.py` are the I/O edge.
   M5 monthly forecasts (`lmp monthly`, `presets.M5_CHOICE`) go to `live_monthly`; the M8 Chronos-2 shadow member
   (`lmp shadow`, live-only, never feeds the signal) goes to `live_shadow`. Ingestion for the daily
   job is orchestrated outside the pipeline by scripts/daily.py.
@@ -81,6 +82,8 @@
 - `uv run lmp dart [--rule v1|v2]` — DART backtest on stored forecasts -> docs/experiments/dart_prototype.md (v1) / dart_v2.md (v2)
 - `uv run lmp risk [--date D]` / `uv run lmp positions [--date D]` / `uv run lmp paper` — live spike risk, DART v2 paper
   positions, paper-trading track record
+- `uv run lmp dart-pricer <candidate>` / `uv run lmp dart-pricer-report` — DART pricer: one logged validation run (development only) / results page docs/experiments/dart_pricer.md
+- `uv run lmp dart-price --candidate X [--date D]` / `uv run lmp dart-score [--candidate X]` — pricer paper positions -> `live_dart_pricer` (not in the daily job) / forward score of DART v2 (default) once 365 counted settled days exist
 - `uv run lmp m5 <models> [--window validation|holdout]` / `uv run lmp monthly` — M5 monthly DA products (runs / live)
 - `uv run lmp scen <indep|gauss|emp|gpd>` / `uv run lmp scen-report` — M4 joint DA/RT scenarios and GPD tail splice over signal v1 (validation) / results page
 - `uv run lmp tcc <candidate>` / `uv run lmp tcc-report` — M9 TCC pricer: one logged walk-forward pass / results page docs/experiments/tcc_pricer.md
