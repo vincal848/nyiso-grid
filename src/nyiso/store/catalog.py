@@ -27,8 +27,9 @@ def _glob(key: str) -> str:
 
 def available_keys() -> list[str]:
     from nyiso.ingest.external import EXTERNAL
+    from nyiso.ingest.tcc import TCC_KEYS
 
-    return [k for k in [*DATASETS, *EXTERNAL] if any((CURATED / k).rglob("*.parquet"))]
+    return [k for k in [*DATASETS, *EXTERNAL, *TCC_KEYS] if any((CURATED / k).rglob("*.parquet"))]
 
 
 def interval_keys() -> list[str]:

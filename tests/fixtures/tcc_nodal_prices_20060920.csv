@@ -1,0 +1,18 @@
+Nodal Price
+
+Summer 2006
+Monthly Reconfiguration Auction
+October 2006
+Version #1
+Current Status - Finalized
+"Posted: September 20, 2006"
+
+Period ID,Period Name,Start Date,End Date,Period Duration (# of months),PTID,PTID Name,Zone,Nodal Price ($/TCC-Period Duration)
+1,Period 1,10/01/2006,10/31/2006,1,23512,ARTHUR_KILL_2,N.Y.C.,6693.51
+1,Period 1,10/01/2006,10/31/2006,1,23513,ARTHUR_KILL_3,N.Y.C.,6608.51
+1,Period 1,10/01/2006,10/31/2006,1,23514,ALLEGHENY___COGEN,GENESE,-39.54
+1,Period 1,10/01/2006,10/31/2006,1,23515,BROOKLYN_NAVY_YARD,N.Y.C.,5205.51
+1,Period 1,10/01/2006,10/31/2006,1,23516,ASTORIA___3,N.Y.C.,7075.97
+1,Period 1,10/01/2006,10/31/2006,1,23517,ASTORIA___4,N.Y.C.,7072.71
+
+Report Created:,10/08/2026 01:44:21

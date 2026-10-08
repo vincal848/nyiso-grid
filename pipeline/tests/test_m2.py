@@ -69,13 +69,14 @@ def test_oos_quantiles_only_use_earlier_folds():
 
 def test_structural_congestion_features_never_see_unpublished_shadow_prices():
     from lmpsignal.structural.congestion import StructuralCongestion
+    from lmpsignal.structural.constraints import load_structural
 
     days = pd.date_range("2024-01-01", "2024-03-31", freq="D")
     rng = np.random.default_rng(0)
     rows = [{"market": mk, "d": d, "hr": h, "key": k, "mu": float(rng.normal(10, 3))}
             for mk in ("da", "rt") for d in days for h in range(24) for k in ("A|BASE", "B|BASE") if rng.random() < 0.3]
     sp = pd.DataFrame(rows)
-    M = StructuralCongestion(k=2)
+    M = StructuralCongestion(k=2, load=load_structural)
     idx = pd.MultiIndex.from_product([days, range(24)], names=["delivery_date", "hour_local"])
     M.sys = pd.DataFrame({"load_fcst_nyiso": 1.0, "temp_fcst_nyiso": 1.0, "gas_hh": 1.0, "dow": 1, "month": 1}, index=idx)
     M.outages = pd.DataFrame({"n_outages": 1, "n_outages_345": 1}, index=days)
@@ -91,3 +92,21 @@ def test_structural_congestion_features_never_see_unpublished_shadow_prices():
             shocked.loc[(shocked["d"] == target[0]) & (shocked["market"] == "da"), "mu"] = 1e6
         M.sp = shocked
         pd.testing.assert_frame_equal(base, M._features(market, ["A|BASE", "B|BASE"], target))
+
+
+def test_pure_shift_factors_recover_planted_sensitivities_on_any_window():
+    from lmpsignal.structural.congestion import mu_cube, ridge_shift_factors, top_constraints
+
+    rng = np.random.default_rng(1)
+    days = pd.date_range("2024-02-01", "2024-03-15", freq="D")
+    rows = [{"market": "da", "d": d, "hr": h, "key": k, "mu": float(rng.uniform(5, 50))}
+            for d in days for h in range(24) for k in ("A|X", "B|X", "C|X") if rng.random() < 0.4]
+    sp = pd.DataFrame(rows)
+    keys = top_constraints(sp, "da", days, 3)
+    A_true = np.array([[1.0, -0.5], [0.3, 0.8], [-0.2, 0.1]])                    # (3 keys, 2 locations)
+    X = mu_cube(sp, "da", keys, days).reshape(-1, 3)
+    A = ridge_shift_factors(X, X @ A_true + rng.normal(0, 0.01, (len(X), 2)), ridge=1e-6)
+    np.testing.assert_allclose(A, A_true, atol=0.02)
+    sub = days[10:25]                                                             # an arbitrary window, not a CV fold
+    X2 = mu_cube(sp, "da", keys, sub).reshape(-1, 3)
+    np.testing.assert_allclose(ridge_shift_factors(X2, X2 @ A_true, ridge=1e-6), A_true, atol=0.02)

@@ -386,7 +386,7 @@ def build(start: str | None = None, through: date | None = None) -> int:
     con.execute("CREATE OR REPLACE TEMP TABLE holidays AS SELECT CAST(d AS DATE) AS d, name FROM holidays_df")
     con.register("future_df", future_grid(through))
     con.execute("CREATE OR REPLACE TEMP TABLE future_grid AS SELECT * FROM future_df")
-    from lmpsignal.loadfix import OOS_SCHEMA
+    from lmpsignal.config import OOS_SCHEMA
 
     con.execute(OOS_SCHEMA)
     con.execute(_sql(start))

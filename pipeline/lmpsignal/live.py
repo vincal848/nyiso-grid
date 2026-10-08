@@ -21,7 +21,7 @@ from datetime import UTC, date, datetime, timedelta
 import pandas as pd
 
 from lmpsignal import cv, panel, postprocess, registry
-from lmpsignal.config import BURN_IN_START, EMBARGO_DAYS, EXPERIMENTS_DIR, ISSUE_HOUR_ET
+from lmpsignal.config import EXPERIMENTS_DIR, ISSUE_HOUR_ET
 from lmpsignal.evaluate import QCOLS
 from lmpsignal.presets import FROZEN_BASES, POST_PRESETS, SIGNAL_V1
 
@@ -34,16 +34,10 @@ SCHEMA = f"""CREATE TABLE IF NOT EXISTS live_forecasts (
     git_commit VARCHAR, created_utc TIMESTAMPTZ)"""
 
 
-def month_fold(d: date) -> cv.Fold:
-    m = d.replace(day=1)
-    nxt = (m + timedelta(days=32)).replace(day=1)
-    return cv.Fold(f"{m:%Y-%m}", BURN_IN_START, m - timedelta(days=EMBARGO_DAYS), m, nxt)
-
-
 def _folds(first: date, d: date) -> list[cv.Fold]:
     out, m = [], first.replace(day=1)
     while m <= d:
-        out.append(month_fold(m))
+        out.append(cv.month_fold(m))
         m = (m + timedelta(days=32)).replace(day=1)
     return out
 
@@ -63,7 +57,7 @@ def _outcomes(p: pd.DataFrame) -> pd.DataFrame:
 
 
 def base_forecast(name: str, p: pd.DataFrame, d: date) -> pd.DataFrame:
-    f = month_fold(d)
+    f = cv.month_fold(d)
     model = FROZEN_BASES[name]()
     if hasattr(model, "prepare"):
         model.prepare(p)
@@ -154,7 +148,7 @@ def spike_forecast(d: date) -> pd.DataFrame:
     p = panel.load(end=d + timedelta(days=1))
     if p[p["delivery_date"] == pd.Timestamp(d)].empty:
         raise ValueError(f"panel has no rows for {d}: run `lmp panel --through {d}` first")
-    f = month_fold(d)
+    f = cv.month_fold(d)
     tr, te, thr = spike.fold_data(spike.frame(p), f)
     member = spike.SpikeMember("full").fit(tr, thr)
     o = member.predict(te[te["delivery_date"] == pd.Timestamp(d)])

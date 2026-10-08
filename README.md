@@ -9,7 +9,7 @@ decomposed into energy, loss and congestion, and all of it is validated with loo
 time-block cross-validation and backtest-overfitting diagnostics.
 
 The forecasts are meant to feed DART (virtual bidding) and TCC (NYISO's financial transmission rights)
-pricing. Those pricers are the next phase; this repository builds and validates the signal they need.
+pricing. A DART paper rule is live; a first TCC pricer was built and found no edge over the auction price (M9).
 
 ![Conditions dashboard](docs/img/conditions.png)
 
@@ -175,6 +175,9 @@ Done: the warehouse and dashboard, then the forecasting milestones (details in `
   - M4 robust combination: not adopted. M4 distributional step: a Gaussian-copula joint DA/RT sampler beats independent
     draws on spread CRPS (−2%) and is kept for the DART/TCC pricers; the GPD tail splice and an empirical copula were not adopted.
   - M6 distributional neural network ensemble: not adopted. It fails in cold-weather shock months.
+  - M9 TCC pricer (structural shift factors x constraint shadow prices vs 148 past NYISO TCC auction periods, public auction results
+    ingested by `nyiso tcc`): no edge. Its trades earn what last year's persistence earns, and the market price is the better point
+    forecast (`docs/experiments/tcc_pricer.md`).
 - **M5 monthly DA forecasts** (zones, on/off-peak, 1–6 months ahead): a seasonal norm beat a gas × heat-rate
   anchor, which has no gas forward curve to work with.
 
@@ -184,7 +187,6 @@ and the monthly forecasts. The dashboard's Signal tab shows all of it, with the 
 
 Parked ideas and what was learned from each attempt are in `docs/RESEARCH_LOG.md`. Next:
 - Let the DART v2 paper record build up.
-- TCC pricing from structural node shift factors.
 - A tuned neural network.
 - Foundation models as live shadow members (their pretraining overlaps the validation years).
 

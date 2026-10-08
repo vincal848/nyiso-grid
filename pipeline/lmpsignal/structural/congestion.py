@@ -38,23 +38,52 @@ first 80% of the window; final: whole window), so nothing from the validation mo
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
 from lmpsignal.models.base import Model, to_long
-from lmpsignal.structural import constraints as cs
-from lmpsignal.structural import outages as om
+from lmpsignal.structural.constraints import StructuralData
 
 LAG = {"da": 1, "rt": 2}          # earliest fully published day for each market at issue time
 EXO = ["load_fcst_nyiso", "temp_fcst_nyiso", "gas_hh"]
 
 
+# ---------------------------------------------------------------------------------- pure estimators (DataFrames in)
+# These take data frames, not a fold, so shift factors and shadow-price distributions can be computed on any window
+# (e.g. the TCC pricer's capability periods).
+def mu_cube(sp: pd.DataFrame, market: str, keys: list[str], days: pd.DatetimeIndex) -> np.ndarray:
+    """(n_days, 24, K) shadow prices from the long table `sp` (0 when not binding)."""
+    s = sp[(sp["market"] == market) & sp["key"].isin(keys)]
+    cube = np.zeros((len(days), 24, len(keys)))
+    di = pd.Series(np.arange(len(days)), index=days)
+    ki = {k: i for i, k in enumerate(keys)}
+    s = s[s["d"].isin(days)]
+    cube[di[s["d"]].to_numpy(), s["hr"].to_numpy(), s["key"].map(ki).to_numpy()] = s["mu"].to_numpy()
+    return cube
+
+
+def top_constraints(sp: pd.DataFrame, market: str, days: pd.DatetimeIndex, k: int) -> list[str]:
+    """Top-k constraint keys by sum |shadow price| over `days`."""
+    s = sp[(sp["market"] == market) & sp["d"].isin(days)]
+    return s.groupby("key")["mu"].apply(lambda x: x.abs().sum()).nlargest(k).index.tolist()
+
+
+def ridge_shift_factors(X: np.ndarray, Y: np.ndarray, ridge: float) -> np.ndarray:
+    """(K, n_locations) ridge regression of congestion Y (n_hours, n_locations) on hourly shadow prices X (n_hours, K);
+    hours where any Y is NaN are dropped."""
+    ok = np.isfinite(Y).all(axis=1)
+    return np.linalg.solve(X[ok].T @ X[ok] + ridge * np.eye(X.shape[1]), X[ok].T @ Y[ok])
+
+
 class StructuralCongestion(Model):
     def __init__(self, k: int = 60, window_days: int = 365, ridge: float = 1.0, n_estimators: int = 300,
                  blend_loss: str = "lad", name: str = "struct_cong", node_factors: bool = True,
-                 outage_map: bool = False, outage_lift: str = "crossfit", lift_blocks: int = 5):
+                 outage_map: bool = False, outage_lift: str = "crossfit", lift_blocks: int = 5,
+                 *, load: Callable[[pd.DataFrame, bool], StructuralData]):
+        self.load = load                      # data loader injected by the runner/CLI (constraints.load_structural)
         self.k, self.window_days, self.ridge, self.n_estimators = k, window_days, ridge, n_estimators
         self.blend_loss = blend_loss          # "lad" (median, original) or "l2" (conditional mean)
         self.name = name
@@ -78,27 +107,15 @@ class StructuralCongestion(Model):
 
     # ------------------------------------------------------------------------------------------ data
     def prepare(self, p: pd.DataFrame) -> None:
-        lo = (p["delivery_date"].min() - pd.Timedelta(days=40)).strftime("%Y-%m-%d")
-        hi = (p["delivery_date"].max() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-        self.sp = cs.shadow_prices(lo, hi)
-        days = pd.DatetimeIndex(sorted(p["delivery_date"].unique()))
-        self.outages = cs.outage_counts(days).set_index("d")
-        if self.outage_map:
-            self.omap = om.OutageMap(om.load_lists(pd.Timestamp(lo) - pd.Timedelta(days=1), hi))
+        data = self.load(p, self.outage_map)
+        self.sp, self.outages, self.omap, self.node_cong = data.sp, data.outages, data.omap, data.node_cong
         self.sys = p[p["zone"] == "WEST"].groupby(["delivery_date", "hour_local"])[EXO + ["dow", "month"]].mean()
         # zone congestion targets (hourly grid by local date/hour; fall-back hour averaged)
         self.cong = {m: p.groupby(["zone", "delivery_date", "hour_local"])[f"{m}_congestion"].mean().unstack("zone")
                      for m in ("da", "rt")}
 
     def _mu_cube(self, market: str, keys: list[str], days: pd.DatetimeIndex) -> np.ndarray:
-        """(n_days, 24, K) shadow prices (0 when not binding)."""
-        s = self.sp[(self.sp["market"] == market) & self.sp["key"].isin(keys)]
-        cube = np.zeros((len(days), 24, len(keys)))
-        di = pd.Series(np.arange(len(days)), index=days)
-        ki = {k: i for i, k in enumerate(keys)}
-        s = s[s["d"].isin(days)]
-        cube[di[s["d"]].to_numpy(), s["hr"].to_numpy(), s["key"].map(ki).to_numpy()] = s["mu"].to_numpy()
-        return cube
+        return mu_cube(self.sp, market, keys, days)
 
     def _features(self, market: str, keys: list[str], days: pd.DatetimeIndex,
                   lift: pd.DataFrame | None = None) -> pd.DataFrame:
@@ -142,8 +159,7 @@ class StructuralCongestion(Model):
 
     # ------------------------------------------------------------------------------------------ pieces
     def _catalog(self, m, days):
-        s = self.sp[(self.sp["market"] == m) & self.sp["d"].isin(days)]
-        return s.groupby("key")["mu"].apply(lambda x: x.abs().sum()).nlargest(self.k).index.tolist()
+        return top_constraints(self.sp, m, days, self.k)
 
     def _zone_grid(self, m, days, zones):
         g = self.cong[m].reindex(pd.MultiIndex.from_product([days, range(24)]))[zones].to_numpy()
@@ -152,8 +168,7 @@ class StructuralCongestion(Model):
     def _shift_factors(self, m, keys, days, zones):
         X = self._mu_cube(m, keys, days).reshape(-1, len(keys))
         Y = self._zone_grid(m, days, zones).reshape(-1, len(zones))
-        ok = np.isfinite(Y).all(axis=1)
-        return np.linalg.solve(X[ok].T @ X[ok] + self.ridge * np.eye(len(keys)), X[ok].T @ Y[ok])
+        return ridge_shift_factors(X, Y, self.ridge)
 
     def _outage_lift(self, m, keys, days):
         if not self.outage_map or self.outage_lift == "none":
@@ -271,14 +286,14 @@ class StructuralCongestion(Model):
                                                  for z, c in coefs.items()]))
         if not self.node_factors:
             return
-        nc = cs.node_congestion(m, days.min(), days.max() + pd.Timedelta(days=1))
+        nc = self.node_cong(m, days.min(), days.max() + pd.Timedelta(days=1))
         X = pd.DataFrame(cube.reshape(-1, K), index=pd.MultiIndex.from_product([days, range(24)], names=["d", "hr"]))
         nc = nc.reindex(X.index)
         keep_nodes = nc.columns[nc.notna().mean() >= 0.9]
         Y = nc[keep_nodes].ffill().bfill().to_numpy()
         Xv = X.to_numpy()
         ok = np.isfinite(Y).all(axis=1)
-        An = np.linalg.solve(Xv[ok].T @ Xv[ok] + self.ridge * np.eye(K), Xv[ok].T @ Y[ok])       # (K, nodes)
+        An = ridge_shift_factors(Xv, Y, self.ridge)                                              # (K, nodes)
         fitted = Xv[ok] @ An
         ss_res = ((Y[ok] - fitted) ** 2).sum(axis=0)
         ss_tot = ((Y[ok] - Y[ok].mean(axis=0)) ** 2).sum(axis=0)

@@ -17,7 +17,9 @@
   job is orchestrated outside the pipeline by scripts/daily.py.
 - Keep everything a model computes: predictions with quantiles per fold, and model internals as
   artifacts (`registry.save_artifact`; see `docs/STRUCTURE.md`). Metrics are derived, never the only record.
-- DART/TCC pricing is a later phase: build and validate the LMP signal first.
+- TCC pricing (M9, `pipeline/lmpsignal/tcc/`) reads the curated `tcc_*` tables via `lmpsignal.loaders`; no payoff after the
+  holdout start is ever read. The structural model takes injected data (`structural/constraints.load_structural`), so its pure
+  estimators run on any window.
 
 ## Data context — read first
 - `docs/DATA.md` is the data dictionary: every table and column, units, keys, known gaps, and the
@@ -64,6 +66,7 @@
 - `uv run nyiso backfill [--datasets a,b] [--start 2021-10] [--end 2026-09]`
 - `uv run nyiso external [--sources gas_henry_hub,weather_obs,weather_fcst]`
 - `uv run nyiso reference` — nodes table + zone polygons
+- `uv run nyiso tcc` — download public TCC auction results (tcc.nyiso.com) into data/raw/tcc and curated `tcc_*` Parquet
 - `uv run nyiso build` — DuckDB views + aggregates (stop `nyiso serve` first; it holds the DB file)
 - `uv run nyiso validate` — coverage/gap report
 - `uv run nyiso docs` — regenerate the data dictionary docs
@@ -80,6 +83,7 @@
   positions, paper-trading track record
 - `uv run lmp m5 <models> [--window validation|holdout]` / `uv run lmp monthly` — M5 monthly DA products (runs / live)
 - `uv run lmp scen <indep|gauss|emp|gpd>` / `uv run lmp scen-report` — M4 joint DA/RT scenarios and GPD tail splice over signal v1 (validation) / results page
+- `uv run lmp tcc <candidate>` / `uv run lmp tcc-report` — M9 TCC pricer: one logged walk-forward pass / results page docs/experiments/tcc_pricer.md
 - `uv run lmp shadow [--date D] [--score]` — M8 Chronos-2 live shadow forecast / its live record vs signal v1
 - `uv run python scripts/daily.py` — daily job: data refresh, build, panel, forecast, nodes, risk, positions, monthly, shadow (04:30 ET)
 - `uv run pytest` and `uv run ruff check src pipeline scripts tests` (CI runs both)

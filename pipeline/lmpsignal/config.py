@@ -25,6 +25,9 @@ COMPONENTS = ("total", "energy", "loss", "congestion")
 # Quantile grid stored for probabilistic forecasts
 QUANTILES = (0.01, *[round(0.05 * i, 2) for i in range(1, 20)], 0.99)
 
+OOS_SCHEMA = """CREATE TABLE IF NOT EXISTS load_fix_oos (ts_utc TIMESTAMPTZ, zone VARCHAR, delivery_date DATE,
+                load_fix DOUBLE, r_hat DOUBLE, run_id VARCHAR)"""
+
 # ---------------------------------------------------------------- time-block CV
 BURN_IN_START = date(2021, 10, 1)     # training only, never scored
 VALIDATION_START = date(2022, 10, 1)  # 36 monthly blocks

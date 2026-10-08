@@ -72,13 +72,14 @@ def test_crossfit_lift_features_never_use_their_own_block_labels():
     """With outage_lift='crossfit', a training block's lift features must not change when that block's
     binding outcomes change (they come from a table fit on the other blocks)."""
     from lmpsignal.structural.congestion import StructuralCongestion
+    from lmpsignal.structural.constraints import load_structural
 
     days = pd.date_range("2024-01-01", "2024-04-30", freq="D")
     keys = ["ASTANNEX 138 ASTORIAE 138 1 | BASE CASE", "SCRIBA   345 VOLNEY   345 1 | SCRIBA__-VOLNEY___345_21"]
     rng = np.random.default_rng(4)
     rows = [{"market": "da", "d": d, "hr": h, "key": k, "mu": 5.0}
             for d in days for h in range(24) for k in keys if rng.random() < 0.3]
-    M = StructuralCongestion(k=2, outage_map=True, outage_lift="crossfit", lift_blocks=4)
+    M = StructuralCongestion(k=2, outage_map=True, outage_lift="crossfit", lift_blocks=4, load=load_structural)
     idx = pd.MultiIndex.from_product([days, range(24)], names=["delivery_date", "hour_local"])
     M.sys = pd.DataFrame({"load_fcst_nyiso": 1.0, "temp_fcst_nyiso": 1.0, "gas_hh": 1.0, "dow": 1, "month": 1}, index=idx)
     M.outages = pd.DataFrame({"n_outages": 1, "n_outages_345": 1}, index=days)
