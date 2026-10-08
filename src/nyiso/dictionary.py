@@ -110,7 +110,9 @@ _RT_NOTE = ("Published per RTD interval, stamped at interval END (shifted to sta
 TABLES: dict[str, Table] = {t.name: t for t in [
     # ---------------- curated (one DuckDB view per dataset over data/curated/<name>/**.parquet)
     Table("da_lbmp_zone", "curated", "Day-ahead LBMP by zone.", "hourly", ("ts_utc", "ptid"),
-          "MIS damlbmp/*damlbmp_zone.csv", _LBMP),
+          "MIS damlbmp/*damlbmp_zone.csv", _LBMP,
+          notes=("Backfilled to 2015-01 for the monthly forecasts (M5); other datasets start 2021-10. Files before "
+                 "2016-07 spell the congestion header '($/MWH' (aliased in the parser).",)),
     Table("da_lbmp_node", "curated", "Day-ahead LBMP by generator node (~750 nodes).", "hourly", ("ts_utc", "ptid"),
           "MIS damlbmp/*damlbmp_gen.csv", _LBMP_NODE),
     Table("rt_lbmp_zone", "curated", "Real-time LBMP by zone, per RTD interval.", "5-min (irregular)",
@@ -195,7 +197,8 @@ TABLES: dict[str, Table] = {t.name: t for t in [
           notes=("available_utc = 00:00 ET on the day after the trade date (backtest rule). EIA itself posts "
                  "weekly; live use needs a same-day source.",
                  "EIA's NYMEX futures series (RNGC1-4) stopped on 2024-04-05, so there is no free gas forward "
-                 "curve; long-horizon energy norms need another source.")),
+                 "curve; long-horizon energy norms need another source.",
+                 "Stored from 2015-01 (M5 heat-rate anchor); refreshed by `nyiso external` month by month.")),
     Table("weather_obs", "curated", "Hourly weather observations at NY stations (NOAA GHCNh).", "hourly",
           ("ts_utc", "station"), "NOAA NCEI GHCNh by-year PSV; public domain",
           ("ts_utc", "station", "temp_c", "dewpoint_c", "wind_ms", "n_reports", "available_utc"),

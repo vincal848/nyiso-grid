@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-02 15:38",
+  "generated": "2026-10-05 04:13",
   "conventions": [
     {
       "title": "Timestamps",
@@ -75,10 +75,12 @@
         "ptid"
       ],
       "source": "MIS damlbmp/*damlbmp_zone.csv",
-      "notes": [],
-      "rows": 657360,
-      "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:00:00",
+      "notes": [
+        "Backfilled to 2015-01 for the monthly forecasts (M5); other datasets start 2021-10. Files before 2016-07 spell the congestion header '($/MWH' (aliased in the parser)."
+      ],
+      "rows": 1546545,
+      "first": "2015-01-01 05:00:00",
+      "last": "2026-10-06 03:00:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -99,9 +101,9 @@
       ],
       "source": "MIS damlbmp/*damlbmp_gen.csv",
       "notes": [],
-      "rows": 30288394,
+      "rows": 30378154,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:00:00",
+      "last": "2026-10-06 03:00:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -124,9 +126,9 @@
       "notes": [
         "Published per RTD interval, stamped at interval END (shifted to start). ~4% of intervals are not 5 minutes; do not average rows naively \u2014 use the time-weighted tables or store/timeweight.py."
       ],
-      "rows": 8057535,
+      "rows": 8075535,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:55:00",
+      "last": "2026-10-05 08:10:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -150,9 +152,9 @@
         "Published per RTD interval, stamped at interval END (shifted to start). ~4% of intervals are not 5 minutes; do not average rows naively \u2014 use the time-weighted tables or store/timeweight.py.",
         "NYISO archive is missing 2026-08-01..26; the map falls back to rt_lbmp_node_hourly."
       ],
-      "rows": 365268392,
+      "rows": 366165992,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:55:00",
+      "last": "2026-10-05 08:10:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -175,9 +177,9 @@
       "notes": [
         "NYISO archive is missing 2026-07-01..20; lbmp_zone_hourly fills those hours from 5-min data."
       ],
-      "rows": 650520,
+      "rows": 651990,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:00:00",
+      "last": "2026-10-05 05:00:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -198,9 +200,9 @@
       ],
       "source": "MIS rtlbmp/*rtlbmp_gen.csv",
       "notes": [],
-      "rows": 30293752,
+      "rows": 30367056,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:00:00",
+      "last": "2026-10-05 05:00:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -223,9 +225,9 @@
       "notes": [
         "Stamped at interval START. 11 internal zones; no system total row (see load_5m)."
       ],
-      "rows": 5909365,
+      "rows": 5922433,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:55:00",
+      "last": "2026-10-05 05:35:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -247,9 +249,9 @@
       "notes": [
         "Each issue covers the issue day plus 5 days ahead (horizon 0\u20135 days, verified). For a day-ahead forecast use load_forecast_da."
       ],
-      "rows": 3154464,
+      "rows": 3163104,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-06 03:00:00",
+      "last": "2026-10-11 03:00:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -270,9 +272,9 @@
       "notes": [
         "Published per RTD interval, stamped at interval END (shifted to start). ~4% of intervals are not 5 minutes; do not average rows naively \u2014 use the time-weighted tables or store/timeweight.py."
       ],
-      "rows": 3759497,
+      "rows": 3767806,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:55:00",
+      "last": "2026-10-05 05:30:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -292,9 +294,9 @@
       "notes": [
         "Reported separately from load_mw; net load in this project does not subtract it. NYISO is missing ~20 whole days."
       ],
-      "rows": 519684,
+      "rows": 520548,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:00:00",
+      "last": "2026-10-04 03:00:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -315,9 +317,9 @@
       "notes": [
         "Only binding (facility, contingency) pairs are listed; absence = not binding."
       ],
-      "rows": 188092,
+      "rows": 188411,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:00:00",
+      "last": "2026-10-06 02:00:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -340,9 +342,9 @@
       "notes": [
         "Only binding intervals are listed. Stamped at interval START."
       ],
-      "rows": 835997,
+      "rows": 837747,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:50:00",
+      "last": "2026-10-05 05:15:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -364,9 +366,9 @@
       "notes": [
         "Stamped at interval START. Positive direction is NYISO's defined direction for each interface (not re-derived here)."
       ],
-      "rows": 9597551,
+      "rows": 9619952,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:55:00",
+      "last": "2026-10-05 05:55:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -389,9 +391,9 @@
       "notes": [
         "Reserve prices spike under scarcity; a leading indicator of RT price spikes."
       ],
-      "rows": 482064,
+      "rows": 483384,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:00:00",
+      "last": "2026-10-06 03:00:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -415,9 +417,9 @@
       "notes": [
         "Published per RTD interval, stamped at interval END (shifted to start). ~4% of intervals are not 5 minutes; do not average rows naively \u2014 use the time-weighted tables or store/timeweight.py."
       ],
-      "rows": 5909442,
+      "rows": 5922532,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:55:00",
+      "last": "2026-10-05 05:45:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -446,7 +448,7 @@
         "To get the schedule known at time t: first_seen_utc <= t <= last_seen_utc. Runs are split at month boundaries and at publishing gaps > 15 min.",
         "Ambiguous fall-back local times in sched_out/in are read as EDT (no marker published)."
       ],
-      "rows": 5523033,
+      "rows": 5537560,
       "first": null,
       "last": null,
       "columns": {
@@ -471,7 +473,7 @@
       ],
       "source": "MIS realtimelineoutages/*RTLineOutages.csv (compacted snapshots)",
       "notes": [],
-      "rows": 147374,
+      "rows": 147918,
       "first": null,
       "last": null,
       "columns": {
@@ -500,9 +502,9 @@
         "As-of rule: the list for day D is posted ~09:40 ET on D-1 (archive file times confirm the as-posted version is kept), i.e. after the 05:00 ET D-1 forecast issue. Forecasts for D may use the list for D-1 and earlier.",
         "Ambiguous fall-back local times in sched_out/in are read as EDT (no marker published)."
       ],
-      "rows": 274385,
+      "rows": 274812,
       "first": "2021-09-01 04:00:00",
-      "last": "2026-10-03 04:00:00",
+      "last": "2026-10-05 04:00:00",
       "columns": {
         "ts_utc": "Start of the market day the list applies to (00:00 ET, in UTC).",
         "ts_local": "Market day start, America/New_York (display only).",
@@ -522,9 +524,10 @@
       "source": "EIA RNGWHHD (hist_xls/RNGWHHDd.xls); public domain",
       "notes": [
         "available_utc = 00:00 ET on the day after the trade date (backtest rule). EIA itself posts weekly; live use needs a same-day source.",
-        "EIA's NYMEX futures series (RNGC1-4) stopped on 2024-04-05, so there is no free gas forward curve; long-horizon energy norms need another source."
+        "EIA's NYMEX futures series (RNGC1-4) stopped on 2024-04-05, so there is no free gas forward curve; long-horizon energy norms need another source.",
+        "Stored from 2015-01 (M5 heat-rate anchor); refreshed by `nyiso external` month by month."
       ],
-      "rows": 1246,
+      "rows": 2960,
       "first": null,
       "last": null,
       "columns": {
@@ -572,15 +575,46 @@
         "Only GFS temperature is archived back to 2021; other variables start 2024, so v1 uses temperature only to keep the feature consistent across the training history.",
         "Upstream gap: no lead 1-7 forecasts for valid times 2023-12-30 .. 2024-01-19 (lead 0 only). As-of features are NULL there by design; models must handle missing temperature."
       ],
-      "rows": 3752188,
+      "rows": 3695516,
       "first": "2021-10-01 00:00:00",
-      "last": "2026-10-02 23:00:00",
+      "last": "2026-10-05 23:00:00",
       "columns": {
         "ts_utc": "Valid (forecast target) hour, UTC.",
         "station": "Weather station code (config.WEATHER_STATIONS: BUF, ROC, SYR, MSS, ART, ALB, POU, HPN, LGA, JFK, ISP), each mapped to one or more NYISO zones.",
         "lead_days": "Forecast made lead_days x 24 h before the valid hour (0 = latest run, ~analysis).",
         "temp_c": "Forecast 2 m temperature (\u00b0C).",
         "available_utc": "valid \u2212 lead_days \u00d7 24 h + 6 h model latency (conservative); lead 0: valid + 6 h."
+      }
+    },
+    "outage_schedule": {
+      "layer": "curated",
+      "description": "NYISO forward transmission outage schedule (P-14B), as archived daily.",
+      "grain": "snapshot x outage record",
+      "key": [
+        "snapshot_utc",
+        "outage_id",
+        "equipment"
+      ],
+      "source": "MIS csv/os/outage-schedule.csv (current file only; archived by scripts/daily.py from 2026-10-05)",
+      "notes": [
+        "NYISO keeps no history of this file, so the archive starts with the first snapshot (2026-10-05). It is the forward schedule the M3 outage step lacked (outages starting on D)."
+      ],
+      "rows": 10677,
+      "first": null,
+      "last": null,
+      "columns": {
+        "snapshot_utc": "When the file was downloaded (UTC).",
+        "ptid": "Equipment Point ID.",
+        "outage_id": "NYISO outage request ID.",
+        "equipment": "Transmission equipment name as published (line, transformer, breaker).",
+        "equipment_type": "LINE, TRANSFORMER, ...",
+        "sched_out_utc": "Scheduled outage start (local -> UTC).",
+        "sched_in_utc": "Scheduled return to service (local -> UTC).",
+        "called_in": "Transmission owner that called the outage in.",
+        "status": "Outage status as published (e.g. SCHEDULED, EXT FORCED).",
+        "status_date_utc": "When the status was last set (local -> UTC).",
+        "message": "Free-text message.",
+        "available_utc": "= snapshot_utc."
       }
     },
     "weather_hrrr": {
@@ -597,9 +631,9 @@
         "Shortwave radiation is not included: the Zarr archive stores it for some runs only.",
         "Zone polygons are approximate (county-based); external zones are not covered."
       ],
-      "rows": 480733,
+      "rows": 481525,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-03 03:00:00",
+      "last": "2026-10-06 03:00:00",
       "columns": {
         "ts_utc": "Valid time of the (instantaneous) forecast, UTC; the delivery day's local hours.",
         "zone": "NYISO internal zone (cells inside the approximate zone polygon).",
@@ -625,9 +659,9 @@
       ],
       "source": "rt_lbmp_zone via store/timeweight.py",
       "notes": [],
-      "rows": 7887825,
+      "rows": 7905870,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:55:00",
+      "last": "2026-10-05 08:10:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
@@ -647,9 +681,9 @@
       ],
       "source": "fuel_mix via store/timeweight.py",
       "notes": [],
-      "rows": 3680936,
+      "rows": 3689133,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:55:00",
+      "last": "2026-10-05 05:30:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "fuel": "NYISO fuel category: Dual Fuel, Natural Gas, Nuclear, Hydro, Wind, Other Renewables (includes grid-scale solar and biomass), Other Fossil Fuels.",
@@ -667,9 +701,9 @@
       ],
       "source": "load via store/timeweight.py (start-stamped)",
       "notes": [],
-      "rows": 5784735,
+      "rows": 5797627,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:55:00",
+      "last": "2026-10-05 05:35:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
@@ -687,9 +721,9 @@
       ],
       "source": "load_zone_5m",
       "notes": [],
-      "rows": 6310620,
+      "rows": 6324684,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:55:00",
+      "last": "2026-10-05 05:35:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "zone": "Internal zone, or 'NYISO' = sum of the 11 zones.",
@@ -706,9 +740,9 @@
       ],
       "source": "load_5m, fuel_mix_5m, rt_lbmp_zone_5m",
       "notes": [],
-      "rows": 525885,
+      "rows": 527057,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:55:00",
+      "last": "2026-10-05 05:35:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -730,9 +764,9 @@
       "notes": [
         "Rows exist for tomorrow's DA hours with NULL RT."
       ],
-      "rows": 657360,
+      "rows": 659160,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:00:00",
+      "last": "2026-10-06 03:00:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "ts_local": "Interval start in America/New_York wall-clock time (naive). Display only; ambiguous on the fall-back day \u2014 never join on it. [Eastern local time]",
@@ -758,9 +792,9 @@
       ],
       "source": "fuel_mix_5m",
       "notes": [],
-      "rows": 306768,
+      "rows": 307454,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:00:00",
+      "last": "2026-10-05 05:00:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "fuel": "NYISO fuel category: Dual Fuel, Natural Gas, Nuclear, Hydro, Wind, Other Renewables (includes grid-scale solar and biomass), Other Fossil Fuels.",
@@ -777,9 +811,9 @@
       ],
       "source": "load_5m",
       "notes": [],
-      "rows": 525888,
+      "rows": 527064,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:00:00",
+      "last": "2026-10-05 05:00:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
@@ -796,9 +830,9 @@
       ],
       "source": "load_forecast",
       "notes": [],
-      "rows": 525888,
+      "rows": 527328,
       "first": "2021-10-02 04:00:00",
-      "last": "2026-10-02 03:00:00",
+      "last": "2026-10-07 03:00:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",
@@ -815,9 +849,9 @@
       ],
       "source": "interface_flows via store/timeweight.py (start-stamped)",
       "notes": [],
-      "rows": 794322,
+      "rows": 796184,
       "first": "2021-10-01 04:00:00",
-      "last": "2026-10-01 03:00:00",
+      "last": "2026-10-05 05:00:00",
       "columns": {
         "ts_utc": "Interval START in UTC. The join key for every time series. See conventions: timestamps. [UTC timestamp]",
         "interface": "Interface name, e.g. 'CENTRAL EAST - VC', 'TOTAL EAST', or scheduled external lines 'SCH - PJ - NY'.",
@@ -839,9 +873,9 @@
       ],
       "source": "da_constraints, rt_constraints",
       "notes": [],
-      "rows": 48496,
+      "rows": 48611,
       "first": "2021-10-01",
-      "last": "2026-09-30",
+      "last": "2026-10-05",
       "columns": {
         "market": "'DA' (day-ahead) or 'RT' (real-time).",
         "day": "Calendar day in America/New_York (local day boundaries, so DST days have 23 or 25 hours). [date]",
@@ -863,9 +897,9 @@
       ],
       "source": "system_5m, lbmp_zone_hourly, fuel_mix_5m",
       "notes": [],
-      "rows": 1826,
+      "rows": 1831,
       "first": "2021-10-01",
-      "last": "2026-09-30",
+      "last": "2026-10-05",
       "columns": {
         "day": "Calendar day in America/New_York (local day boundaries, so DST days have 23 or 25 hours). [date]",
         "avg_load_mw": "Time-weighted average NYISO load (MW).",
@@ -889,9 +923,9 @@
       ],
       "source": "fuel_mix_5m, btm_solar",
       "notes": [],
-      "rows": 14588,
+      "rows": 14626,
       "first": "2021-10-01",
-      "last": "2026-09-30",
+      "last": "2026-10-05",
       "columns": {
         "day": "Calendar day in America/New_York (local day boundaries, so DST days have 23 or 25 hours). [date]",
         "fuel": "NYISO fuel category, plus 'BTM Solar' (from btm_solar SYSTEM).",
@@ -908,9 +942,9 @@
       ],
       "source": "lbmp_zone_hourly",
       "notes": [],
-      "rows": 27390,
+      "rows": 27465,
       "first": "2021-10-01",
-      "last": "2026-09-30",
+      "last": "2026-10-05",
       "columns": {
         "day": "Calendar day in America/New_York (local day boundaries, so DST days have 23 or 25 hours). [date]",
         "zone": "NYISO zone name as published by MIS: 11 internal load zones (WEST, GENESE, CENTRL, NORTH, MHK VL, CAPITL, HUD VL, MILLWD, DUNWOD, N.Y.C., LONGIL), 4 external proxy zones (H Q = Hydro-Qu\u00e9bec, NPX = ISO-NE, O H = Ontario IESO, PJM), and 'NYISO'/'SYSTEM' totals where noted.",

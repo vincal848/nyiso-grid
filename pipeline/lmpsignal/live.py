@@ -128,3 +128,44 @@ def forecast(d: date, signal: str = SIGNAL_V1) -> pd.DataFrame:
         con.execute(f"INSERT INTO live_forecasts SELECT signal, issue_utc, delivery_date, ts_utc, zone, hour_local, market, "
                     f"component, mean, {', '.join(QCOLS)}, git_commit, created_utc FROM o")
     return out
+
+
+# ----------------------------------------------------------------------------- RT spike risk (M3b member, live)
+
+SPIKE_SCHEMA = f"""CREATE TABLE IF NOT EXISTS live_spike (
+    model VARCHAR, issue_utc TIMESTAMPTZ, delivery_date DATE, ts_utc TIMESTAMPTZ, zone VARCHAR, hour_local INTEGER,
+    p_spike DOUBLE, thr DOUBLE, mean DOUBLE, {", ".join(f"{q} DOUBLE" for q in QCOLS)},
+    git_commit VARCHAR, created_utc TIMESTAMPTZ)"""
+
+
+def spike_forecast(d: date) -> pd.DataFrame:
+    """M3b spike member (`spike_full`) for delivery day D, trained with the validation rule for D's month. Not part of
+    signal v1 (M3b/M4 did not adopt it): a separate risk output and the RT spike input of DART v2."""
+    import warnings
+
+    from lmpsignal import spike
+
+    warnings.filterwarnings("ignore")                              # sklearn penalty deprecation, as in spike.run
+    p = panel.load(end=d + timedelta(days=1))
+    if p[p["delivery_date"] == pd.Timestamp(d)].empty:
+        raise ValueError(f"panel has no rows for {d}: run `lmp panel --through {d}` first")
+    f = month_fold(d)
+    tr, te, thr = spike.fold_data(spike.frame(p), f)
+    member = spike.SpikeMember("full").fit(tr, thr)
+    o = member.predict(te[te["delivery_date"] == pd.Timestamp(d)])
+    out = o[["delivery_date", "ts_utc", "zone", "hour_local", "p_spike", "thr", "mean", *QCOLS]].copy()
+    out.insert(0, "issue_utc", issue_utc(d))
+    out.insert(0, "model", member.name)
+    out["git_commit"] = registry.git_commit()
+    out["created_utc"] = datetime.now(timezone.utc)
+    out["delivery_date"] = out["delivery_date"].dt.date
+    path = LIVE_DIR / member.name / f"date={d}.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    out.to_parquet(path, index=False)
+    with registry.connect() as con:
+        con.execute(SPIKE_SCHEMA)
+        con.execute("DELETE FROM live_spike WHERE model = ? AND delivery_date = ?", [member.name, d])
+        con.register("o", out)
+        con.execute(f"INSERT INTO live_spike SELECT model, issue_utc, delivery_date, ts_utc, zone, hour_local, p_spike, thr, "
+                    f"mean, {', '.join(QCOLS)}, git_commit, created_utc FROM o")
+    return out

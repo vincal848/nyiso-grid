@@ -36,11 +36,15 @@ def _localize(local: pd.Series, df: pd.DataFrame, ds: Dataset, tz_values: pd.Ser
     return local.dt.tz_localize(TZ, ambiguous=is_dst, nonexistent="shift_forward")
 
 
+# Header spellings in older MIS archives -> the current name (LBMP files before 2016-07 truncate this header).
+HEADER_ALIASES = {"Marginal Cost Congestion ($/MWH": "Marginal Cost Congestion ($/MWHr)"}
+
+
 def parse_csv(content: bytes | str, ds: Dataset, file_date: date | None = None) -> pd.DataFrame:
     """Parse a single daily CSV for dataset `ds`."""
     buf = io.StringIO(content.decode("utf-8-sig") if isinstance(content, bytes) else content)
     raw = pd.read_csv(buf, dtype=str, skipinitialspace=True)
-    raw.columns = [c.strip() for c in raw.columns]
+    raw.columns = [HEADER_ALIASES.get(c.strip(), c.strip()) for c in raw.columns]
     if raw.empty:
         return pd.DataFrame()
 

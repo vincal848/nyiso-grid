@@ -38,15 +38,20 @@ Status: `open` (not started), `tried` (result recorded), `blocked` (needs data o
 
 | Idea | Why | Evidence so far | Cost / blocker | Status |
 |---|---|---|---|---|
-| RT spike track (M3b): sparse logistic P(spike) + ORDC-aware magnitude + EVT tail | Models lose to persistence in top-5% RT hours | Roadmap M3b; Hubert, Lolas & Sircar 2026 | Training milestone with budget | open |
+| RT spike track (M3b): sparse logistic P(spike) + GPD magnitude, mixed into v1 | Models lose to persistence in top-5% RT hours | Spike-hour RT CRPS −12% (significant), pooled −2% (p = 0.12): not adopted (ROADMAP M3b result). Open follow-ups: ORDC-aware magnitude, threshold that adapts to price level (2025 winter base rates 41–71%), p_spike used in DART v2 (M4) | Next attempt needs a new declared milestone | tried |
 | QRA / LQRA, isotonic distributional regression, conformal ensemble (M4) | 98% intervals miss ~3% with clustered misses | Scoreboard (Christoffersen p ≈ 0) | Mostly post-processing | open |
 | EVT (GPD) tail splice above the 0.9 quantile | Heavy tails | Literature | Post-processing | open |
-| DART v2: size on conditional-mean forecasts + RT spike risk | DART prototype loses (holdout −$195k): v1's median-like RT forecast understates the RT mean by ~$4.5 (validation), biasing the spread to INC | docs/experiments/dart_prototype.md | Mean-targeting members or distribution mean; spike model (M3b); joint DA/RT (M4) | open |
+| DART v2: size on conditional-mean forecasts + RT spike risk | DART prototype loses (holdout −$195k): v1's median-like RT forecast understates the RT mean by ~$4.5 (validation), biasing the spread to INC | M4: validation +$231k (Sharpe 0.92) vs v1 −$30k; top 1% of days = 80% of P&L; no out-of-sample test yet (docs/experiments/dart_v2.md) | Paper trading live since 2026-10-06 (`live_dart`, `lmp paper`); judge after enough settled days, rule frozen | paper |
 | Joint DA/RT samples | DART P&L needs the spread's error correlation | Roadmap M4 | Moderate | open |
+| Robust median combination (M4 `combo3_med_aci`) | Guard against one member blowing up (LEAR, Jan 2026) | DA CRPS +5% (median often picks persistence); RT flat; not adopted | A guard that only triggers out of range (see LEAR blow-up guard) | tried |
 | LEAR blow-up guard in shock months | M7: LEAR's DA MAE 140 $/MWh in 2026-01 made signal v1's DA RMSE worse than persistence on the holdout | M7 result (docs/SIGNAL_V1.md) | Post-processing (shrink toward persistence when inputs leave the training range) or robust LEAR loss | open |
 | LEAR v2 with corrected load / HRRR inputs | `lear_wx` tested on LEAR v1 only | — | One full run | open |
 | DNN / NBEATSx ensemble, distributional DNN, TabPFN-TS / Chronos-2 member (M6) | Literature gains 3–8% rMAE over LEAR (European DA) | Literature | Large | open |
-| Horizon extension (M5): bid-stack anchor, seasonal norms | Needed for TCC / monthly products | Roadmap | Large | open |
+| Monthly norm with recent-year weights or a level adjustment (M5 follow-up) | `m5_norm` weights 2015–2020 equally; missed winter 2025–26 by ~60% | M5 check: `m5_lastyear` 11.3 vs norm 22.2 total CRPS on 2025-10..2026-09 | Post-processing over stored M5 forecasts or one declared run | open |
+| Gas forward curve for the heat-rate anchor (M5) | Spot gas at the cutoff is a poor forecast of gas months ahead | `m5_anchor` loses to the norm (13.6 vs 10.2) mostly after the 2022 gas spike | Free NYMEX series ended 2024-04; CME settlements / paid data | blocked (data) |
+| EIA-923 / CEMS bid stack, masked offers (M5) | Structural anchor for supply shifts | Not attempted in M5 | Ingest EIA-923, CEMS and NYISO masked bids (3-month lag) | open |
+| RT monthly averages, hourly shapes, nodes and TCC path values (M5 scope) | TCC valuation needs node-pair congestion over a month or a capability period | M5 covers zonal DA total and congestion only | Moderate | open |
+| Horizon extension (M5): bid-stack anchor, seasonal norms | Needed for TCC / monthly products | Roadmap | Large | tried (M5: seasonal norm adopted) |
 
 ## Infrastructure
 

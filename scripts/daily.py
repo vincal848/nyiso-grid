@@ -8,6 +8,9 @@ in their own layers):
   4. lmp panel        with feature rows through tomorrow
   5. lmp forecast     frozen signal -> experiments.duckdb live_forecasts
   6. lmp nodes        node-level forecasts for tomorrow -> live_node_forecasts
+  7. lmp risk         RT spike probabilities (M3b member, separate from the signal) -> live_spike
+  8. lmp positions    DART v2 paper positions -> live_dart (paper only; track record: `lmp paper`)
+  9. lmp monthly      M5 monthly DA forecasts, latest vintage (changes once a month) -> live_monthly
 
 Schedule: before the 05:00 ET DAM bid deadline (e.g. 04:30 ET). The panel's as-of rules mean a later run gives the
 same features, so a late run is still a valid (if unusable for bidding) forecast.
@@ -45,6 +48,9 @@ def main() -> int:
         ["lmp", "panel", "--through", str(d)],
         ["lmp", "forecast", "--date", str(d)],
         ["lmp", "nodes", "--date", str(d)],
+        ["lmp", "risk", "--date", str(d)],
+        ["lmp", "positions", "--date", str(d)],
+        ["lmp", "monthly"],
     ]
     if a.skip_data:
         steps = steps[3:]

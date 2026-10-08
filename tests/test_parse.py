@@ -121,3 +121,11 @@ def test_snapshot_compaction_splits_on_gaps_and_changes():
     assert list(out["snapshots"]) == [6, 3, 1]
     assert out.loc[0, "last_seen_utc"] == t0 + pd.Timedelta(minutes=25)
     assert out.loc[2, "first_seen_utc"] == t0 + pd.Timedelta(minutes=90)
+
+
+def test_old_lbmp_header_spelling_is_aliased():
+    """MIS LBMP files before 2016-07 truncate the congestion header to '($/MWH'."""
+    old = ('"Time Stamp","Name","PTID","LBMP ($/MWHr)","Marginal Cost Losses ($/MWHr)","Marginal Cost Congestion ($/MWH"\n'
+           '"03/01/2016 00:00","CAPITL",61757,14.16,0.47,-7.20\n')
+    df = parse_csv(old, DATASETS["da_lbmp_zone"], file_date=date(2016, 3, 1))
+    assert df["mcc"].iloc[0] == -7.20 and df["lbmp"].iloc[0] == 14.16

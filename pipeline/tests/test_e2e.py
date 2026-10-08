@@ -49,3 +49,62 @@ def test_dart_positions_size_by_spread_over_uncertainty_and_net_costs():
     assert out.loc["N.Y.C.", "x_signal"] == 0                                         # |spread| <= cost: no trade
     assert out.loc["CAPITL", "x_signal"] == -1                                        # strong DEC, capped
     assert np.isclose(out.loc["CAPITL", "pnl_signal"], -1 * (55 - 80) - dart.COST)
+
+
+def test_spike_mix_moves_mean_and_upper_tail_by_the_spike_probability():
+    from lmpsignal import postprocess
+    from lmpsignal.config import QUANTILES
+    from lmpsignal.evaluate import QCOLS
+
+    ts = pd.Timestamp("2024-07-01 20:00", tz="UTC")
+    k = {"delivery_date": pd.Timestamp("2024-07-01"), "ts_utc": ts, "zone": "N.Y.C.", "hour_local": 16,
+         "market": "rt", "component": "total", "y": 50.0, "scored": True, "ref_mean": np.nan}
+    qs = np.asarray(QUANTILES)
+    base = pd.DataFrame([{**k, "mean": 50.0, **dict(zip(QCOLS, 40 + 20 * qs))}])
+    spike = pd.DataFrame([{**k, "mean": 300.0, "p_spike": 0.1, **dict(zip(QCOLS, 200 + 200 * qs))}])
+    out = postprocess.spike_mix(base, spike)
+    assert np.isclose(out["mean"].iloc[0], 0.9 * 50 + 0.1 * 300)
+    assert out["q50"].iloc[0] < 60 and out["q95"].iloc[0] > 200        # median stays in the base, top 5% in the spike
+    zero = postprocess.spike_mix(base, spike.assign(p_spike=0.0))
+    assert np.allclose(zero[QCOLS].to_numpy(), base[QCOLS].to_numpy(), atol=0.5)
+
+
+def test_cli_and_scripts_import():
+    """Catch syntax errors in modules the unit tests do not otherwise import."""
+    import importlib
+    import runpy  # noqa: F401
+    from pathlib import Path
+
+    importlib.import_module("lmpsignal.cli")
+    root = Path(__file__).resolve().parents[2]
+    compile((root / "scripts" / "daily.py").read_text(encoding="utf-8"), "daily.py", "exec")
+
+
+def test_median_combination_ignores_one_blown_up_member():
+    from lmpsignal import cv, postprocess
+
+    f = cv.folds()[0]
+    k = {"delivery_date": pd.Timestamp(f.test_start), "ts_utc": pd.Timestamp(f.test_start, tz="UTC"), "zone": "WEST",
+         "hour_local": 0, "market": "da", "component": "total", "y": 50.0, "scored": True, "ref_mean": np.nan}
+    parents = {n: pd.DataFrame([{**k, "mean": v}]) for n, v in (("a", 48.0), ("b", 900.0), ("c", 52.0))}
+    out, _ = postprocess.combine(parents, [f], "median")
+    assert out["mean"].iloc[0] == 52.0
+
+
+def test_dart_v2_position_uses_correlation_and_cost_band():
+    s, sig, x = dart.v2_position([50.0, 50.0, 50.3], [45.0, 45.0, 50.0], [10.0, 10.0, 10.0], [10.0, 10.0, 10.0],
+                                 [0.0, 0.9, 0.0])
+    assert np.allclose(s, [5.0, 5.0, 0.3])
+    assert np.isclose(sig[0], np.sqrt(200)) and np.isclose(sig[1], np.sqrt(20))   # correlated errors shrink the scale
+    assert np.isclose(x[0], 5 / np.sqrt(200)) and x[1] == 1.0                     # ... so the position grows, capped at 1
+    assert x[2] == 0.0                                                            # inside the cost band: no trade
+
+
+def test_dart_v2_rho_uses_only_the_prior_year():
+    days = pd.date_range("2024-01-01", "2025-12-31", freq="D")
+    r = np.random.default_rng(0).normal(size=len(days))
+    resid = pd.DataFrame({"delivery_date": days, "zone": "WEST", "r_da": r,
+                          "r_rt": np.where(days < "2025-01-01", r, -r)})                # sign flips in 2025
+    assert np.isclose(dart._rho(resid, pd.Timestamp("2025-01-01"))["WEST"], 1.0)
+    assert np.isclose(dart._rho(resid, pd.Timestamp("2026-01-01"))["WEST"], -1.0)
+    assert dart._rho(resid, pd.Timestamp("2023-06-01")).empty

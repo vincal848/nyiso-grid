@@ -11,6 +11,8 @@ Availability rules (see docs/DATA.md "As-of availability"):
   ISOLF issue F ............. 08:30 ET on F   (so a 05:00 D-1 issue uses the D-2 file)
   weather_fcst / gas ........ their available_utc column
   weather_hrrr .............. available_utc = 06z run on D-1 + 2 h
+  rt_asp .................... interval end + 15 min;  da_asp of day X: 11:00 ET on X-1
+  da_sched_outages list X ... ~09:40 ET on X-1 (the D-1 list is used for D)
   load_fix_oos .............. inputs above (ISOLF D-2, HRRR, GFS) + a model trained on data ending 7 days before the
                               month (lmpsignal/loadfix.py); NULL before 2022-10 and until `lmp loadfix gbm --oos` runs
 """
@@ -89,6 +91,16 @@ FEATURES: dict[str, tuple[str, str]] = {
                        "as load_fix_zone"),
     "load_surprise_nyiso": ("load_fix_nyiso / sum of zonal ISOLF D-2 - 1: system load surprise.", "as load_fix_zone"),
     "load_fix_nyiso_daily_max": ("Max of load_fix_nyiso over delivery day D (MW).", "as load_fix_zone"),
+    "rt_spin_max_24h": ("Max RT 10-min spinning reserve price of the zone over the 24 h before issue ($/MWh). NULL for "
+                        "external zones.", "rt_asp interval end + 15 min"),
+    "rt_spin_mean_24h": ("Mean RT 10-min spinning reserve price of the zone over the 24 h before issue ($/MWh).",
+                         "rt_asp interval end + 15 min"),
+    "rt_shortage_7d": ("Number of RT 5-min intervals in the 7 days before issue with the zone's 10-min spinning or 30-min "
+                       "reserve price above $50 (reserve shortage proxy).", "rt_asp interval end + 15 min"),
+    "da_spin_max_d1": ("Max DA 10-min spinning reserve price of the zone on D-1 ($/MWh).", "da_asp of D-1: 11:00 ET on D-2"),
+    "dam_outages_d": ("Transmission outages on the DAM outage list of D-1 (P-54C) scheduled to still be out on D.",
+                      "list of D-1 posted ~09:40 ET on D-2"),
+    "dam_outages_345_d": ("Same, 345 kV equipment only.", "list of D-1 posted ~09:40 ET on D-2"),
     "gas_hh": ("Latest Henry Hub spot price available at issue time ($/MMBtu).", "gas_henry_hub.available_utc"),
     "implied_hr_d1": ("da_d1_mean / gas_hh: implied market heat rate of D-1 (MMBtu/MWh).", "max of inputs"),
 }
@@ -96,10 +108,13 @@ FEATURES: dict[str, tuple[str, str]] = {
 # Named feature sets, so adding panel columns never silently changes an existing model configuration.
 _WEATHER_V2 = ("temp_fcst_zone_isolf",) + tuple(c for c in FEATURES if c.startswith("hrrr_"))
 _LOAD_V3 = ("load_fix_zone", "load_surprise_zone", "load_fix_nyiso", "load_surprise_nyiso", "load_fix_nyiso_daily_max")
+_RESERVE_V4 = ("rt_spin_max_24h", "rt_spin_mean_24h", "rt_shortage_7d", "da_spin_max_d1", "dam_outages_d",
+               "dam_outages_345_d")
 FEATURE_SETS: dict[str, list[str]] = {
-    "v1": [c for c in FEATURES if c not in _WEATHER_V2 + _LOAD_V3],   # panel as of M2-M3 (2026-09-28)
-    "v2": [c for c in FEATURES if c not in _LOAD_V3],                 # + HRRR weather, ISOLF-vintage GFS (2026-10-02)
-    "v3": list(FEATURES),                                             # + weather-corrected load (2026-10-04)
+    "v1": [c for c in FEATURES if c not in _WEATHER_V2 + _LOAD_V3 + _RESERVE_V4],   # panel as of M2-M3 (2026-09-28)
+    "v2": [c for c in FEATURES if c not in _LOAD_V3 + _RESERVE_V4],    # + HRRR weather, ISOLF-vintage GFS (2026-10-02)
+    "v3": [c for c in FEATURES if c not in _RESERVE_V4],               # + weather-corrected load (2026-10-04)
+    "v4": list(FEATURES),                                              # + reserve prices, DAM outage counts (2026-10-05)
 }
 
 KEYS = ["delivery_date", "ts_utc", "ts_local", "zone", "issue_utc"]
@@ -213,6 +228,30 @@ FROM load_fix_oos x GROUP BY 1;
 CREATE OR REPLACE TEMP TABLE lfx_day AS
 SELECT timezone({ET}, ts_utc)::DATE AS d, max(fix) AS mx FROM lfx_sys WHERE n = 11 GROUP BY 1;
 
+-- reserve prices (M3b): RT ASP as of issue (interval start + 5 min end + 15 min), DA ASP of D-1
+CREATE OR REPLACE TEMP TABLE iss AS SELECT DISTINCT zone, issue_utc, delivery_date FROM base;
+CREATE OR REPLACE TEMP TABLE rsv AS
+SELECT i.zone, i.issue_utc,
+       max(a.spin_10) FILTER (WHERE a.ts_utc >= i.issue_utc - INTERVAL 24 HOUR) AS spin_max,
+       avg(a.spin_10) FILTER (WHERE a.ts_utc >= i.issue_utc - INTERVAL 24 HOUR) AS spin_mean,
+       count(*) FILTER (WHERE a.spin_10 > 50 OR a.or_30 > 50) AS shortage,
+       max(a.ts_utc) + INTERVAL 20 MINUTE AS avail
+FROM iss i JOIN wh.rt_asp a
+  ON a.zone = i.zone AND a.ts_utc >= i.issue_utc - INTERVAL 7 DAY AND a.ts_utc + INTERVAL 20 MINUTE <= i.issue_utc
+GROUP BY ALL;
+CREATE OR REPLACE TEMP TABLE dasp AS
+SELECT zone, CAST(ts_local AS DATE) AS d, max(spin_10) AS spin_max FROM wh.da_asp GROUP BY ALL;
+-- DAM outage list of D-1 (P-54C), outages still scheduled out on D
+CREATE OR REPLACE TEMP TABLE damo AS
+SELECT d.delivery_date,
+       count(DISTINCT o.equipment) AS n, count(DISTINCT o.equipment) FILTER (WHERE o.equipment LIKE '%345%') AS n345,
+       timezone({ET}, CAST(d.delivery_date - INTERVAL 2 DAY AS TIMESTAMP) + INTERVAL 10 HOUR) AS avail
+FROM (SELECT DISTINCT delivery_date FROM base) d
+JOIN wh.da_sched_outages o ON CAST(o.ts_local AS DATE) = d.delivery_date - INTERVAL 1 DAY
+ AND o.sched_in_utc > timezone({ET}, CAST(d.delivery_date AS TIMESTAMP))
+ AND o.sched_out_utc < timezone({ET}, CAST(d.delivery_date + INTERVAL 1 DAY AS TIMESTAMP))
+GROUP BY ALL;
+
 CREATE OR REPLACE TEMP TABLE hol AS SELECT * FROM holidays;
 
 CREATE OR REPLACE TABLE panel AS
@@ -268,6 +307,9 @@ SELECT
     CASE WHEN lxs.n = 11 THEN lxs.fix END AS load_fix_nyiso,
     CASE WHEN lxs.n = 11 THEN lxs.fix / lxs.isolf - 1 END AS load_surprise_nyiso,
     lxd.mx AS load_fix_nyiso_daily_max,
+    -- reserve prices and DAM outages
+    rsv.spin_max AS rt_spin_max_24h, rsv.spin_mean AS rt_spin_mean_24h, rsv.shortage AS rt_shortage_7d,
+    dasp.spin_max AS da_spin_max_d1, damo.n AS dam_outages_d, damo.n345 AS dam_outages_345_d,
     -- fuel
     gas.price_usd_mmbtu AS gas_hh, d1.da_mean / nullif(gas.price_usd_mmbtu, 0) AS implied_hr_d1,
     -- scoring masks
@@ -285,7 +327,11 @@ SELECT
     greatest(hr.available_utc, hd.avail, hs.avail) AS _avail_hrrr,
     CASE WHEN coalesce(lx.load_fix, lxs.fix) IS NOT NULL
          THEN greatest(hs.avail, lfn_day.avail, lfz.avail_utc, wis.avail, wiz.avail) END AS _avail_load_fix,
-    gas.available_utc AS _avail_gas
+    gas.available_utc AS _avail_gas,
+    rsv.avail AS _avail_rt_reserve,
+    CASE WHEN dasp.spin_max IS NOT NULL
+         THEN timezone({ET}, CAST(b.delivery_date - INTERVAL 2 DAY AS TIMESTAMP) + INTERVAL 11 HOUR) END AS _avail_da_reserve,
+    damo.avail AS _avail_dam_outages
 FROM base b
 LEFT JOIN px p1 ON p1.zone = b.zone AND p1.d = b.delivery_date - INTERVAL 1 DAY AND p1.hr = b.hour_local
 LEFT JOIN px p7 ON p7.zone = b.zone AND p7.d = b.delivery_date - INTERVAL 7 DAY AND p7.hr = b.hour_local
@@ -306,6 +352,9 @@ LEFT JOIN hr_sys hs ON hs.ts_utc = b.ts_utc
 LEFT JOIN load_fix_oos lx ON lx.ts_utc = b.ts_utc AND lx.zone = b.zone
 LEFT JOIN lfx_sys lxs ON lxs.ts_utc = b.ts_utc
 LEFT JOIN lfx_day lxd ON lxd.d = b.delivery_date
+LEFT JOIN rsv ON rsv.zone = b.zone AND rsv.issue_utc = b.issue_utc
+LEFT JOIN dasp ON dasp.zone = b.zone AND dasp.d = b.delivery_date - INTERVAL 1 DAY
+LEFT JOIN damo ON damo.delivery_date = b.delivery_date
 LEFT JOIN gas ON gas.issue_utc = b.issue_utc
 LEFT JOIN hol ON hol.d = b.delivery_date
 ORDER BY b.ts_utc, b.zone;

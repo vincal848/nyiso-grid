@@ -41,6 +41,9 @@ phase; this phase builds the probabilistic LMP signal._
 - **M7 (2026-10-05): signal v1 frozen and evaluated once.** `combo3_eq_aci` (selection rule, pooled CRPS 7.593).
   Holdout total CRPS DA 9.75 vs 11.54 for yesterday's DA (−16%), RT 14.55 vs 19.56 (−26%); intervals calibrated;
   DA RMSE worse than persistence because of January 2026. Details: `docs/SIGNAL_V1.md`.
+- **M3b / M4 (2026-10-05)**: spike member and robust combination not adopted; DART v2 positive on validation, now
+  paper-traded live. **M5 (2026-10-05)**: monthly DA products, horizons 1-6; the seasonal norm beat the gas x heat-rate
+  anchor and the decay model and is the live monthly forecast (`lmp monthly`).
 - **Holdout data complete** (2026-10-02): warehouse and panel cover 2025-10-01..2026-09-30. Still locked.
 
 ## Metric decision (2026-09-28)
@@ -99,6 +102,75 @@ error, decayed counts of recent spikes, NYC/LI outages, thunderstorm proxy × lo
 ORDC-aware magnitude model (energy + Σ P(shortage_k) × reserve-curve step + congestion) with an EVT tail.
 Report results with and without 2025-06-24 (single-event concentration).
 
+### M3b declaration (2026-10-05, before any M3b run)
+- **Target**: RT total price spikes. Spike = RT total ≥ the zone's 95th percentile of RT total over the 365 training
+  days before the fold's training end (top-5% hours carry 30–38% of absolute DART spread in validation).
+- **Model** (`spike` member): per-zone-hour P(spike) from an L1-regularized logistic regression pooled over the 11
+  internal zones (zone and hour-block indicators); spike magnitude as threshold + GPD-fitted excess per zone, fit
+  in-fold. Features, from the research notes (MMU drivers; Hubert, Lolas & Sircar 2026), all as of 05:00 ET D−1:
+  lagged reserve prices (RT ASP up to issue, DA ASP of D−1) and shortage counts (RT 10/30-min reserve price above
+  $50 over the last 7 days), decayed counts of recent zone spikes (RT through D−2), load-forecast surprise
+  (`load_surprise_*`), HRRR storm proxy (CAPE p90 × reflectivity share × hot-hour load), temperature extremes,
+  NYC/LI outages on the DAM list of D−1, gas.
+- **Integration** (post-processing over signal v1, RT total only; components unchanged in this milestone):
+  mixture F = (1 − p)·F_v1 + p·F_spike. Post variants declared: `v1_spike_mix` and `v1_spike_mix_aci` (ACI after the mix).
+- **Budget: 3 full runs.** (1) full features; (2) ablation without HRRR storm features; (3) reserved for one
+  bug-fix re-run. Smoke runs do not count. Post variants: the two above only.
+- **Metrics**: spike Brier and log loss vs in-fold climatology and vs "spiked at D−2" persistence; RT total CRPS
+  pooled and on top-5% hours vs `combo3_eq_aci`, DM tests, all reported with and without 2025-06-24.
+- **Adoption rule**: a variant becomes signal v2 only if pooled RT total CRPS and top-5%-hour RT CRPS both improve
+  on `combo3_eq_aci` with Holm-adjusted DM p < 0.05 (both with and without 2025-06-24). The holdout is spent (M7),
+  so v2 evidence is validation plus the live track record; no second holdout evaluation.
+
+### M3b result (2026-10-05): spike member works, not adopted into the signal
+Budget used: run 1 `spike_full-20261005T062326-ef62f5`; run 2 `spike_no_storm` killed after 10 folds (out of memory
+while post-processing ran concurrently; marked failed); run 3 its re-run `spike_no_storm-20261005T065811-2bd4e0`.
+- Classifier: beats in-fold climatology on Brier in 35/36 folds and "spiked at D−2" in 34/36; pooled Brier 0.0403,
+  log loss 0.1416 (base rate 7.4%). HRRR storm features add little (log loss 0.1423 without them).
+- Mixed into signal v1's RT total (`v1_spike_mix`): RT CRPS on spike hours −12.4% (Holm p < 0.0001), pooled −2.0%
+  (Holm p = 0.12); without 2025-06-24: −12.8% / −1.9% (p = 0.15). `v1_spike_mix_aci` is worse pooled (+1.3%).
+- Adoption rule needs both gains significant, so **signal v1 is unchanged**. The spike probabilities stay available
+  as a separate risk output (and as an input for DART v2, see `docs/RESEARCH_LOG.md`).
+
+### M4 declaration (2026-10-05, before any M4 run) — post-processing only, no base-model runs
+- **Signal candidates** (budget: 2 post presets + 1 reserved for a bug-fix re-run):
+  1. `combo3_med_aci`: robust combination, the **median** of `lear_clip`, `gbm_l1` and `persist_da_d1` point
+     forecasts (instead of the mean of the first two), then clip and ACI. Guards against one member blowing up, as
+     LEAR did in January 2026 (M7).
+  2. `combo3_med_spike`: candidate 1, then `spike_mix` with `spike_full` on RT total (M3b's −12% on spike hours).
+- **Adoption rule**: a candidate replaces signal v1 only if pooled total CRPS improves on `combo3_eq_aci` in **both**
+  DA and RT, each with Holm-adjusted DM p < 0.05 (Holm over the candidates), with and without 2025-06-24. Validation
+  only: the holdout is spent.
+- **DART v2** (trading rule, not part of the signal; declared, not tuned): spread s = DA distribution mean − RT
+  mixture mean, where the distribution mean is the average of the q05..q95 quantiles and the RT mean mixes in the
+  spike member, (1 − p)·mean_RT + p·spike mean; spread scale σ_s = sqrt(σ_DA² + σ_RT² − 2ρσ_DAσ_RT) with ρ the zone's
+  DA/RT residual correlation over the 365 days before the month (as of the fold's training end). Position and cost as
+  in DART v1. Reported on validation only, against DART v1 and the persistence rule, with and without 2025-06-24.
+- Not attempted in this milestone (left in the research log): QRA/LQRA, isotonic distributional regression, EVT
+  tail splice (the M7 intervals are already calibrated at 90% and 98%).
+
+### M4 result (2026-10-05): no candidate adopted; DART v2 is positive on validation
+Budget used: 2 of 3 (`combo3_med_aci-20261005T073759-06aab6`, `combo3_med_spike-20261005T073858-3a40a6`). The
+reserved run went to a bug fix in the DART v2 backtest (ρ for the first validation month, which has no earlier
+residuals: now 0), not to a signal re-run.
+
+| market | candidate | CRPS v1 | CRPS cand | change | Holm p | change ex 06-24 | Holm p ex 06-24 |
+|---|---|---|---|---|---|---|---|
+| DA | combo3_med_aci | 4.432 | 4.659 | +5.1% | 1.00 | +5.3% | 1.00 |
+| DA | combo3_med_spike | 4.432 | 4.659 | +5.1% | 1.00 | +5.3% | 1.00 |
+| RT | combo3_med_aci | 10.754 | 10.751 | −0.03% | 0.48 | −0.00% | 0.50 |
+| RT | combo3_med_spike | 10.754 | 10.623 | −1.2% | 0.22 | −1.1% | 0.27 |
+
+- The median of three often picks `persist_da_d1`, so it gives up the LEAR/GBM average's DA skill (DA RMSE 12.7 vs
+  12.0). The spike mix only touches RT, which is why the two candidates are identical in DA. **Signal v1 is unchanged.**
+- DART v2 (`docs/experiments/dart_v2.md`, validation only): +$231k (+$2.96/MWh, Sharpe 0.92, max drawdown −$39k), or
+  +$258k without 2025-06-24. Same rows: DART v1 −$30k, persistence −$16k. Hit rate is 48%, so gains come from size,
+  not frequency; the top 1% of days carry 80% of P&L. The holdout is spent, so this has **no out-of-sample
+  confirmation**: it goes into paper trading on the live forecasts before any capital (research log).
+- Paper trading started 2026-10-05 (first delivery day 2026-10-06): the daily job runs the spike member live
+  (`lmp risk` -> `live_spike`) and writes DART v2 positions (`lmp positions` -> `live_dart`); track record via
+  `lmp paper` and the dashboard's Signal tab. The rule stays frozen while the record accumulates.
+
 ## M4: probabilistic combination (evidence: strong for DA, European)
 QRA / LQRA over the member pool + isotonic distributional regression + conformal ensemble; EVT (GPD)
 tail splice above the ~0.9 conditional quantile; joint DA/RT samples so the DA−RT spread keeps its
@@ -107,6 +179,63 @@ error correlation (for DART later).
 ## M5: horizon extension
 Fuel × heat-rate bid-stack anchor (EIA-923 / CEMS heat rates, calibrated to 3-month-lagged masked
 offers), seasonal norms and decay curves per component, monthly congestion from the M3 structure.
+
+### M5 declaration (2026-10-05, before any M5 run)
+- **Targets** (monthly products, the inputs for monthly / capability-period TCC and forward valuation): per internal
+  zone and month, the average **DA total LBMP** and average **DA congestion** (−mcc, positive = congestion raises the
+  price) over **on-peak** hours (Mon–Fri except NERC holidays, HE08–HE23) and **off-peak** hours (all others).
+  RT monthly averages, hourly shapes, nodes and TCC path values are out of scope (research log).
+- **Issue rule, horizons h = 1..6**: for target month M at horizon h, data cutoff = first day of month M − (h − 1)
+  months, minus 7 days (the daily folds' training end, moved back h − 1 months). Prices with delivery date < cutoff.
+  Gas = mean Henry Hub spot of the last 10 trade days with trade date ≤ cutoff − 7 days (EIA posts weekly).
+- **History**: DA zonal LBMP backfilled to 2015-01 (warehouse only; the daily panel still starts 2021-10, so signal v1
+  is unaffected). Forecasts are made for every target month from 2016-01 so each model has its own past errors.
+- **Distributions** (same for every model): total in logs, congestion in levels. Quantiles = point forecast combined
+  with the empirical quantiles of that model's past errors at the same horizon and zone (errors of target months fully
+  known at the cutoff, pooled over on/off-peak; pooled over zones while fewer than 24). Mean = point forecast
+  corrected by the mean past error (it is the forecast scored by RMSE).
+- **Baselines** (benchmarks, not budgeted): `m5_persist` (last full month before the cutoff), `m5_lastyear` (same
+  month a year earlier), `m5_norm` (mean of the same calendar month over all earlier years).
+- **Candidates, budget 3 full runs**: (1) `m5_anchor`: total = implied heat rate × gas, heat rate = median of
+  (monthly price ÷ monthly Henry Hub) for the zone, calendar month and period over the last 5 years; congestion =
+  median of the same calendar month over the last 5 years. (2) `m5_decay`: anchor + decaying recent deviation per
+  component, log total = log anchor + φ_h · (log of the last full month's price ÷ its anchor at realized gas),
+  congestion = norm + ψ_h · (last full month − its norm), with φ_h, ψ_h ∈ [0, 1] per horizon fit by least squares on
+  earlier target months only. (3) reserved for one bug-fix re-run. The EIA-923/CEMS bid stack, masked offers and
+  M3-structure congestion are not attempted (no data ingested or no gain in M3; research log).
+- **Validation**: target months 2022-10..2025-09 (36), all six horizons. Scores: CRPS (primary) and RMSE, pooled over
+  zones, periods and horizons, also by horizon. DM tests on the per-target-month mean loss (36 observations).
+- **Adoption, per target** (total, congestion): the candidate with the lowest pooled CRPS is the M5 forecast if it
+  beats **every** baseline with Holm-adjusted DM p < 0.05 (Holm over its three comparisons); otherwise the M5
+  forecast is the baseline with the lowest pooled CRPS.
+- **Then one run on target months 2025-10..2026-09** for the adopted models and the baselines, reported as a check on
+  an already-seen period (the M7 holdout year: not used for fitting, but its daily prices have been looked at).
+
+### M5 result (2026-10-05): the seasonal norm wins; no candidate adopted
+Budget used: 2 of 3 (`m5_anchor-20261005T080925-a2f04c`, `m5_decay-20261005T080942-c339fc`); the reserved run was not
+needed. Baselines: `m5_persist-…d90f81`, `m5_lastyear-…0838ca`, `m5_norm-…dacb08`. Validation, 36 target months ×
+6 horizons × 11 zones × on/off-peak (4,752 rows per target):
+
+| model | total CRPS | total RMSE | congestion CRPS | congestion RMSE |
+|---|---|---|---|---|
+| m5_norm | **10.18** | **20.2** | **3.84** | 8.64 |
+| m5_decay | 13.10 | 27.0 | 3.86 | **8.52** |
+| m5_anchor | 13.63 | 27.4 | 4.14 | 9.24 |
+| m5_persist | 16.83 | 36.9 | 4.67 | 10.81 |
+| m5_lastyear | 19.42 | 43.5 | 6.39 | 14.03 |
+
+- Total: `m5_decay` loses to `m5_norm` at every horizon (h1 10.21 vs 10.02, h6 15.2 vs 10.3). The anchor treats spot
+  gas at the cutoff as the forecast of future gas: right while gas was stable (2022Q4, 2023Q3–Q4), badly wrong
+  after the 2022 spike (2023Q1 CRPS 26 vs 6). Without a gas forward curve (EIA's futures series ended 2024-04) the
+  anchor cannot beat the norm. Congestion: decay ties the norm (3.86 vs 3.84; DM vs persistence Holm p = 0.20).
+- **M5 forecast = `m5_norm` for both targets** (`presets.M5_CHOICE`). φ_h (total) came out ≈ 0, ψ_h 0.01–0.13.
+- Check on the already-seen target months 2025-10..2026-09 (baselines only, since the norm was adopted): total CRPS
+  `m5_lastyear` 11.3, `m5_norm` 22.2, `m5_persist` 35.9; congestion `m5_persist` 2.3, `m5_lastyear` 3.2, `m5_norm`
+  3.9. Winter 2025–26 broke the norm: NYISO on-peak DA averaged $208 in January 2026 vs a $77 norm, because the norm
+  weights 2015–2020 low-price years equally. A norm with recent-year weights or a level adjustment, and a gas forward
+  curve, are the next ideas (research log); the declared choice is not re-tuned on this period.
+- Live: `lmp monthly` (daily job; the vintage changes on the cutoff, about the 24th) -> `live_monthly`, dashboard
+  Signal tab.
 
 ## M6: deep and graph models (ensemble members, not replacements)
 Feed-forward DNN / NBEATSx ensemble (4+ runs), distributional DNN (Johnson SU); TabPFN-TS or

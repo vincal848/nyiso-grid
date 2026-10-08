@@ -165,7 +165,7 @@ async function liveInit() {
   $("#live-zone").innerHTML = INTERNAL.map((z) => `<option ${z === "N.Y.C." ? "selected" : ""}>${z}</option>`).join("");
   const dates = await api("/api/live/dates").catch(() => []);
   $("#live-date").innerHTML = dates.map((r) => `<option>${r.delivery_date}</option>`).join("");
-  ["live-date", "live-zone", "live-comp"].forEach((id) => ($("#" + id).onchange = () => { drawLive(); drawLiveNodes(); }));
+  ["live-date", "live-zone", "live-comp"].forEach((id) => ($("#" + id).onchange = () => { drawLive(); drawLiveNodes(); drawDart(); drawMonthly(); }));
 }
 
 async function drawLive() {
@@ -220,9 +220,43 @@ async function drawLiveNodes() {
     `<tr><td>${r.name}</td><td>${r.zone}</td><td class="num">${num(r.total, 2)}</td><td class="num">${num(r.congestion, 2)}</td></tr>`).join("");
 }
 
+async function drawDart() {
+  const date = $("#live-date").value;
+  const d = await api(`/api/live/dart${date ? `?date=${date}` : ""}`).catch(() => ({ zones: [] }));
+  $("#dart-title").textContent = `RT spike risk and DART v2 paper positions${d.date ? `, ${d.date}` : ""}`;
+  $("#t-dart tbody").innerHTML = d.zones.map((r) =>
+    `<tr><td>${r.zone}</td><td class="num">${num(r.p_spike_max, 2)}</td><td class="num">${r.p_spike_hour ?? "–"}</td>` +
+    `<td class="num">${num(r.net_mwh, 1)}</td><td class="num">${num(r.spread_fcst, 2)}</td>` +
+    `<td class="num">${r.settled_hours ? num(r.spread_actual, 2) : "–"}</td>` +
+    `<td class="num">${r.settled_hours === r.hours ? num(r.pnl, 0) : "–"}</td></tr>`).join("");
+  const rows = await api("/api/live/paper").catch(() => []);
+  if (!rows.length) { chart("c-paper").clear(); return; }
+  chart("c-paper").setOption(base({
+    tooltip: { ...base().tooltip, valueFormatter: (v) => (v == null ? "–" : `$${num(v, 0)}`) },
+    legend: { ...base().legend, data: ["Daily P&L", "Cumulative"] },
+    xAxis: { ...base().xAxis, data: rows.map((r) => r.delivery_date) },
+    series: [{ name: "Daily P&L", type: "bar", data: rows.map((r) => r.pnl), itemStyle: { color: css("--s1") } },
+             line("Cumulative", rows.map((r) => r.cum_pnl), css("--s2"))],
+  }), true);
+}
+
+async function drawMonthly() {
+  const zone = $("#live-zone").value || "N.Y.C.";
+  const d = await api(`/api/live/monthly?zone=${encodeURIComponent(zone)}`).catch(() => ({ rows: [] }));
+  const months = [...new Set(d.rows.map((r) => r.month))];
+  const get = (m, c, p) => d.rows.find((r) => r.month === m && r.component === c && r.period === p) || {};
+  $("#monthly-title").textContent = `Monthly DA forecast (M5), ${zone}` + (d.rows.length ? `, vintage ${d.rows[0].cutoff}` : "");
+  $("#t-monthly tbody").innerHTML = months.map((m) => {
+    const pt = get(m, "total", "peak");
+    return `<tr><td>${String(m).slice(0, 7)}</td><td class="num">${num(pt.mean, 2)}</td>` +
+      `<td class="num">${num(pt.q05, 0)}–${num(pt.q95, 0)}</td><td class="num">${num(get(m, "total", "offpeak").mean, 2)}</td>` +
+      `<td class="num">${num(get(m, "congestion", "peak").mean, 2)}</td><td class="num">${num(get(m, "congestion", "offpeak").mean, 2)}</td></tr>`;
+  }).join("");
+}
+
 window.renderSignal = async function (date) {
   await liveInit();
-  await Promise.all([drawLive().catch(() => {}), drawTrack().catch(() => {}), drawLiveNodes().catch(() => {})]);
+  await Promise.all([drawLive().catch(() => {}), drawTrack().catch(() => {}), drawLiveNodes().catch(() => {}), drawDart().catch(() => {}), drawMonthly().catch(() => {})]);
   await sigInit();
   if (!$("#t-sig tbody").children.length) await loadStructure().catch(() => {});
   await drawFan(date).catch(() => {});
