@@ -17,12 +17,16 @@ import platform
 import subprocess
 from datetime import UTC, datetime
 from importlib import metadata
+from pathlib import Path
 
 import duckdb
 import pandas as pd
 
 from lmpsignal.config import EXPERIMENTS_DB, EXPERIMENTS_DIR, FEATURES_DB
-from nyiso.config import ROOT
+
+# The checkout this code runs from. NYISO_ROOT may point the data at another checkout (a worktree sharing a warehouse),
+# so fingerprints and the git commit must not follow it.
+CODE_ROOT = Path(__file__).resolve().parents[2]
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (run_id VARCHAR PRIMARY KEY, model VARCHAR, config_json VARCHAR,
@@ -49,8 +53,8 @@ def code_fingerprint() -> str:
     hashes the same on Windows and in CI. Runs logged before 2026-10-02 used OS-native paths (Windows
     backslashes); their fingerprints are not comparable with later ones."""
     h = hashlib.sha256()
-    files = sorted((f.relative_to(ROOT).as_posix(), f)
-                   for base in (ROOT / "src" / "nyiso", ROOT / "pipeline" / "lmpsignal")
+    files = sorted((f.relative_to(CODE_ROOT).as_posix(), f)
+                   for base in (CODE_ROOT / "src" / "nyiso", CODE_ROOT / "pipeline" / "lmpsignal")
                    for f in base.rglob("*")
                    if f.suffix in (".py", ".sql") and "__pycache__" not in f.parts)
     for rel, f in files:
@@ -62,10 +66,10 @@ def code_fingerprint() -> str:
 def git_commit() -> str | None:
     """HEAD commit (+ '-dirty' if the tree has changes), or None if there are no commits yet."""
     try:
-        head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True)
+        head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=CODE_ROOT, capture_output=True, text=True)
         if head.returncode != 0:
             return None
-        dirty = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain"], cwd=CODE_ROOT, capture_output=True, text=True).stdout.strip()
         return head.stdout.strip() + ("-dirty" if dirty else "")
     except OSError:
         return None
