@@ -1,4 +1,4 @@
-"""Non-MIS sources: EIA gas prices, NOAA GHCNh weather observations, Open-Meteo forecast vintages.
+"""Non-MIS sources: EIA gas prices, NOAA weather, Open-Meteo forecast vintages, IESO (Ontario) interties.
 
 Every table carries `available_utc`: the earliest time the value could have been known. The
 forecasting pipeline's as-of joins filter on it, so information rules live with the data.
@@ -12,6 +12,7 @@ import io
 import json
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from xml.etree import ElementTree
 
 import pandas as pd
 
@@ -35,6 +36,8 @@ EXTERNAL = {d.key: d for d in [
                     "ts_utc"),
     ExternalDataset("outage_schedule", "NYISO forward transmission outage schedule (P-14B), archived daily snapshots",
                     "snapshot_utc"),
+    ExternalDataset("ieso_intertie_lmp", "IESO day-ahead and real-time intertie LMPs by component (CAD/MWh)", "ts_utc"),
+    ExternalDataset("ieso_intertie_flow", "IESO hourly intertie schedules and actual flows (MW)", "ts_utc"),
 ]}
 
 
@@ -193,3 +196,91 @@ def outage_schedule() -> pd.DataFrame:
     cols = ["snapshot_utc", "ptid", "outage_id", "equipment", "equipment_type", "sched_out_utc", "sched_in_utc",
             "called_in", "status", "status_date_utc", "message", "available_utc"]
     return pd.concat(frames, ignore_index=True)[cols] if frames else pd.DataFrame(columns=cols)
+
+
+# ----------------------------------------------------------------------------- IESO (Ontario)
+# IESO reports use hour-ending Eastern STANDARD Time all year: hour h of date D starts at D + (h - 1) h, UTC-5, with
+# no daylight saving. Prices are in Canadian dollars.
+
+_IESO = "https://reports-public.ieso.ca/public"
+_IESO_NS = {"i": "http://www.ieso.ca/schema"}
+_EST = pd.Timedelta(hours=5)
+IESO_RETENTION_DAYS = 90       # the intertie LMP folders keep a rolling window only; older files return 404
+IESO_COMPONENTS = {"Intertie LMP": "lmp", "Energy Loss Price": "loss", "Energy Congestion Price": "congestion",
+                   "External Congestion Price": "ext_congestion",
+                   "Net Interchange Scheduling Limit (NISL) Price": "nisl"}
+
+
+def _est_to_utc(day, hour_ending) -> pd.Series:
+    return (pd.to_datetime(day) + pd.to_timedelta(pd.Series(hour_ending, dtype=int) - 1, unit="h") + _EST).dt.tz_localize("UTC")
+
+
+def parse_ieso_intertie_lmp(xml: bytes, market: str) -> pd.DataFrame:
+    """One DA (daily, 24 hours) or RT (hourly, twelve 5-minute intervals) intertie LMP report -> hourly wide rows.
+    RT hours are the mean of their intervals (all 5 minutes long)."""
+    root = ElementTree.fromstring(xml)
+    created = pd.Timestamp(root.findtext("i:DocHeader/i:CreatedAt", namespaces=_IESO_NS)).tz_localize("UTC") + _EST
+    body = root.find("i:DocBody", _IESO_NS)
+    day = body.findtext("i:DeliveryDate", namespaces=_IESO_NS)
+    rows = []
+    for p in body.iterfind("i:IntertieLMPrice", _IESO_NS):
+        name = p.findtext("i:IntertiePLName", namespaces=_IESO_NS).removesuffix(":LMP")
+        for c in p.iterfind("i:Components", _IESO_NS):
+            col = IESO_COMPONENTS[c.findtext("i:LMPComponent", namespaces=_IESO_NS)]
+            for v in c.iterfind("i:HourlyLMP", _IESO_NS) if market == "DA" else c.iterfind("i:IntervalLMP", _IESO_NS):
+                rows.append((name, col, int(v[0].text), float(v.findtext("i:LMP", namespaces=_IESO_NS))))
+    df = pd.DataFrame(rows, columns=["intertie", "component", "k", "price"])
+    if market == "RT":
+        df["k"] = int(body.findtext("i:DeliveryHour", namespaces=_IESO_NS))
+    df = df.pivot_table(index=["intertie", "k"], columns="component", values="price", aggfunc="mean").reset_index()
+    df["ts_utc"] = _est_to_utc(day, df["k"])
+    # A DA report is final when posted; an RT hour is known once it has ended and the report exists.
+    df["available_utc"] = created if market == "DA" else (df["ts_utc"] + pd.Timedelta(hours=1)).clip(lower=created)
+    df["market"] = market
+    return df.reindex(columns=["ts_utc", "market", "intertie", *IESO_COMPONENTS.values(), "available_utc"])
+
+
+def ieso_intertie_lmp(start: date, end: date) -> pd.DataFrame:
+    """DA and RT intertie LMPs for delivery days start..end that are still inside IESO's rolling window. Files for the
+    last two days are re-fetched (RT reports are revised); older cached files are reused."""
+    today = date.today()
+    first = max(start, today - timedelta(days=IESO_RETENTION_DAYS))
+    frames = []
+    for d in pd.date_range(first, min(end, today + timedelta(days=1))).date:
+        fresh = d >= today - timedelta(days=2)
+        reports = [("DA", "DAHourlyIntertieLMP", f"{d:%Y%m%d}")]
+        reports += [("RT", "RealTimeIntertieLMP", f"{d:%Y%m%d}{h:02d}") for h in range(1, 25)]
+        for market, report, stamp in reports:
+            raw = _cached(RAW / "ieso" / report / f"{stamp}.xml", f"{_IESO}/{report}/PUB_{report}_{stamp}.xml", fresh)
+            if raw is not None:
+                frames.append(parse_ieso_intertie_lmp(raw, market))
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def parse_ieso_intertie_flow(text: str) -> pd.DataFrame:
+    """Yearly intertie schedule and flow CSV -> long hourly rows per intertie (Imp / Exp scheduled, Flow actual)."""
+    lines = text.splitlines()
+    groups, fields = lines[3].split(",")[2:], lines[4].split(",")[2:]
+    df = pd.read_csv(io.StringIO("\n".join(lines[5:])), header=None)
+    out = []
+    for i in range(0, len(groups), 3):
+        assert fields[i:i + 3] == ["Imp", "Exp", "Flow"], fields[i:i + 3]
+        part = df.iloc[:, [0, 1, 2 + i, 3 + i, 4 + i]].copy()
+        part.columns = ["date", "hour", "import_mw", "export_mw", "flow_mw"]
+        out.append(part.assign(intertie=groups[i]))
+    df = pd.concat(out, ignore_index=True)
+    df["ts_utc"] = _est_to_utc(df["date"], df["hour"])
+    # The yearly file is rebuilt daily; an hour is assumed published by the end of the next EST day.
+    df["available_utc"] = (pd.to_datetime(df["date"]) + pd.Timedelta(days=2)).dt.tz_localize("UTC") + _EST
+    return df[["ts_utc", "intertie", "import_mw", "export_mw", "flow_mw", "available_utc"]]
+
+
+def ieso_intertie_flow(years: list[int]) -> pd.DataFrame:
+    """Hourly intertie schedules and flows for the given years (published from 2018; the current year is refreshed)."""
+    frames = []
+    for y in years:
+        url = f"{_IESO}/IntertieScheduleFlowYear/PUB_IntertieScheduleFlowYear_{y}.csv"
+        raw = _cached(RAW / "ieso" / "IntertieScheduleFlowYear" / f"{y}.csv", url, y >= date.today().year)
+        if raw is not None:
+            frames.append(parse_ieso_intertie_flow(raw.decode("utf-8-sig")))
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()

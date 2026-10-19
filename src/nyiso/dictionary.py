@@ -233,6 +233,32 @@ TABLES: dict[str, Table] = {t.name: t for t in [
                      "message": "Free-text message.", "available_utc": "= snapshot_utc."},
           notes=("NYISO keeps no history of this file, so the archive starts with the first snapshot (2026-10-05). "
                  "It is the forward schedule the M3 outage step lacked (outages starting on D).",)),
+    Table("ieso_intertie_lmp", "curated", "IESO (Ontario) day-ahead and real-time intertie LMPs by component.",
+          "hourly x market x intertie", ("ts_utc", "market", "intertie"),
+          "IESO public reports DAHourlyIntertieLMP (daily) and RealTimeIntertieLMP (hourly, 5-minute intervals)",
+          ("ts_utc", "market", "intertie", "lmp", "loss", "congestion", "ext_congestion", "nisl", "available_utc"),
+          overrides={"ts_utc": "Hour start (UTC). IESO hours are hour-ending Eastern STANDARD time all year: hour h "
+                               "of date D starts at D + (h - 1) h, UTC-5.",
+                     "intertie": "IESO intertie pricing location without the ':LMP' suffix; the New York interties "
+                                 "end in _NYSI (e.g. NY.ROSETON_NYSI).",
+                     "lmp": "Intertie LMP, CAD/MWh (Canadian dollars, not converted).",
+                     "loss": "Energy loss component, CAD/MWh.", "congestion": "Energy congestion component, CAD/MWh.",
+                     "ext_congestion": "External congestion component, CAD/MWh.",
+                     "nisl": "Net Interchange Scheduling Limit price component, CAD/MWh.",
+                     "available_utc": "DA: the report's CreatedAt (published D-1). RT: hour end, or the report's "
+                                      "CreatedAt if later."},
+          notes=("IESO keeps only a rolling ~90 days of these reports (older files return 404), so history starts at "
+                 "the first backfill (2026-07) and grows by archiving; the renewed market began 2025-05.",
+                 "RT hours are the mean of their twelve 5-minute intervals, from the latest version of the hourly "
+                 "file. Files for the last two days are re-fetched because RT reports are revised.")),
+    Table("ieso_intertie_flow", "curated", "IESO hourly intertie schedules and actual flows.", "hourly x intertie",
+          ("ts_utc", "intertie"), "IESO public report IntertieScheduleFlowYear (one CSV per year, from 2018)",
+          ("ts_utc", "intertie", "import_mw", "export_mw", "flow_mw", "available_utc"),
+          overrides={"ts_utc": "Hour start (UTC); IESO hour-ending Eastern STANDARD time, as ieso_intertie_lmp.",
+                     "intertie": "IESO intertie group as published (NEW-YORK, MICHIGAN, PQ.AT, ...; 'Total' = all).",
+                     "import_mw": "Scheduled imports into Ontario.", "export_mw": "Scheduled exports from Ontario.",
+                     "flow_mw": "Actual flow, positive out of Ontario (MW).",
+                     "available_utc": "End of the next EST day (the yearly file is rebuilt daily; assumption)."}),
     Table("weather_hrrr", "curated", "NOAA HRRR 06z forecasts for the next delivery day, aggregated to NYISO zones.",
           "hourly x zone (one run per delivery day)", ("ts_utc", "zone"),
           "HRRR v4 via the University of Utah Zarr archive on AWS Open Data (s3://hrrrzarr); public domain",

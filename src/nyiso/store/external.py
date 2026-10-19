@@ -37,6 +37,10 @@ def run(sources: list[str] | None = None, start: str = DEFAULT_START, end: date 
         elif key == "outage_schedule":
             external.outage_schedule_snapshot()
             df = external.outage_schedule()
+        elif key == "ieso_intertie_lmp":
+            df = external.ieso_intertie_lmp(start_d, end_d)
+        elif key == "ieso_intertie_flow":
+            df = external.ieso_intertie_flow(list(range(start_d.year, end_d.year + 1)))
         elif key == "weather_hrrr":
             from nyiso.ingest import hrrr
 

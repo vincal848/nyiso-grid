@@ -3,7 +3,8 @@
 Runs the project CLIs in order (each a separate process, so warehouse ingestion and the forecasting pipeline stay
 in their own layers):
   1. nyiso backfill   current + previous month (complete months are skipped; incomplete ones re-fetched)
-  2. nyiso external   gas, weather observations/forecasts, HRRR, P-14B outage-schedule snapshot
+  2. nyiso external   gas, weather observations/forecasts, HRRR, P-14B outage-schedule snapshot, IESO interties
+                     (IESO keeps ~90 days of intertie prices, so this run is also their archive)
   3. nyiso build      DuckDB views (fails if `nyiso serve` holds the database: stop it or schedule around it)
   4. lmp panel        with feature rows through tomorrow
   5. lmp forecast     frozen signal -> experiments.duckdb live_forecasts

@@ -37,10 +37,10 @@ def backfill(
 
 @app.command("external")
 def external_cmd(
-    sources: str = typer.Option(None, help="Comma-separated: gas_henry_hub,weather_obs,weather_fcst,weather_hrrr,outage_schedule (default: all)"),
+    sources: str = typer.Option(None, help="Comma-separated: gas_henry_hub,weather_obs,weather_fcst,weather_hrrr,outage_schedule,ieso_intertie_lmp,ieso_intertie_flow (default: all)"),
     start: str = typer.Option(DEFAULT_START, help="First month, YYYY-MM"),
 ):
-    """Fetch non-MIS sources (EIA gas, NOAA weather, Open-Meteo forecasts) into curated Parquet."""
+    """Fetch non-MIS sources (EIA gas, NOAA weather, Open-Meteo forecasts, IESO interties) into curated Parquet."""
     from nyiso.store.external import run
 
     for key, (rows, parts) in run(sources.split(",") if sources else None, start).items():
