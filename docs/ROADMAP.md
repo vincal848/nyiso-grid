@@ -552,6 +552,11 @@ trial). Tables: `docs/experiments/dart_pricer.md`. **All numbers are validation-
   on 2026-10-08 and first runs 2026-10-09 04:30, so 10-10 is the first delivery day it can record before the day begins). It was
   committed before that day, because coverage (>= 80% of calendar days since the start) is measured from it. Days before it never count,
   so 2026-10-06 is excluded.
+- **Forward window correction (2026-10-18), stricter, made before any affected day:** a day counts only if its rows were created by the
+  DAM bid deadline, 05:00 ET on D-1, not merely before D 00:00 ET. Reason: the daily task now catches up a missed 04:30 start (it had
+  missed 2026-10-14..18 while the PC slept), and a position recorded after 05:00 on D-1 could not have been bid. Every day recorded so
+  far was written between 04:39 and 04:57 ET on D-1, so no counted day changes (`dart_forward.counted`, test in `test_dart_forward.py`).
+  Delivery days 2026-10-15..19 have no positions and stay missed.
 - Limits: costs are an assumption (fee source not retrieved); price taker; no cross-hour or cross-zone dependence; the pricer has no spike
   member input; proxy buses not built.
 

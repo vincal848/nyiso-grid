@@ -23,23 +23,28 @@ def test_planted_drift_is_found_and_power_rises_with_n():
     assert flat["power"].max() < 0.15                       # signal-free: power stays at the size
 
 
-def _positions(days, created_hours_before=6):
+def _positions(days):
     ts = [pd.Timestamp(d, tz="America/New_York").tz_convert("UTC") + pd.Timedelta(hours=h) for d in days for h in range(24)]
     n = len(ts) // len(days)
+    made = [pd.Timestamp(d, tz="America/New_York") - pd.Timedelta(hours=19, minutes=30) for d in days]    # the 04:30 job on D-1
     rows = pd.DataFrame({"delivery_date": np.repeat(pd.to_datetime(days), 24), "ts_utc": ts, "zone": "WEST",
-                         "created_utc": [t - pd.Timedelta(hours=24 + created_hours_before) for t in ts]})
+                         "created_utc": np.repeat(pd.DatetimeIndex(made).tz_convert("UTC"), 24)})
     return pd.concat([rows.assign(zone=f"Z{i}") for i in range(11)], ignore_index=True), n
 
 
 def test_counted_days_exclude_early_late_filled_and_unsettled():
-    days = ["2026-10-08", "2026-10-09", "2026-10-10", "2026-10-11"]
+    days = ["2026-10-08", "2026-10-09", "2026-10-10", "2026-10-11", "2026-10-12"]
     x, _ = _positions(days)
     out = x[["ts_utc", "zone"]].drop_duplicates().assign(y_da=50.0, y_rt=45.0)
     out.loc[out["ts_utc"] >= pd.Timestamp("2026-10-11", tz="America/New_York").tz_convert("UTC"), "y_rt"] = np.nan   # not settled
     late = x["delivery_date"] == "2026-10-10"
     x.loc[late, "created_utc"] = x.loc[late, "ts_utc"]                                                         # filled after the day began
+    after_bid = x["delivery_date"] == "2026-10-12"                                                             # caught-up run at 09:00 D-1
+    x.loc[after_bid, "created_utc"] = pd.Timestamp("2026-10-11 09:00", tz="America/New_York").tz_convert("UTC")
+    out.loc[out["ts_utc"] >= pd.Timestamp("2026-10-12", tz="America/New_York").tz_convert("UTC"), "y_rt"] = 45.0
     got = f.counted(x, out, pd.Timestamp("2026-10-09"))
-    assert sorted(got["delivery_date"].unique()) == [pd.Timestamp("2026-10-09")]       # 10-08 before start, 10-10 late, 10-11 unsettled
+    assert sorted(got["delivery_date"].unique()) == [pd.Timestamp("2026-10-09")]       # 10-08 before start, 10-10 late, 10-11
+    #                                                                                    unsettled, 10-12 made after the bid deadline
 
 
 def test_evaluate_waits_then_scores_once_and_flags_gaps():
