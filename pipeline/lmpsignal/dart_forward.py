@@ -15,6 +15,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from .config import ISSUE_HOUR_ET
+
 BLOCK = 5            # mean block length (days); v2's validation daily P&L has lag-1 autocorrelation 0.28
 
 
@@ -71,11 +73,12 @@ ZONE_HOURS_MIN = 11 * 23   # a complete day has every internal zone-hour (23 hou
 
 def counted(x: pd.DataFrame, outcomes: pd.DataFrame, start: pd.Timestamp) -> pd.DataFrame:
     """Rows of positions `x` (delivery_date, ts_utc, zone, created_utc, ...) that count toward the forward window: the delivery day
-    is on/after `start`, the rows were created before the delivery day began in New York (no after-the-fact fills), and the day is
-    complete and fully settled in `outcomes` (ts_utc, zone, y_da, y_rt). Returns x joined with y_da, y_rt."""
+    is on/after `start`, the rows were created by the DAM bid deadline (05:00 ET on D-1; a later row could not have been bid), and the
+    day is complete and fully settled in `outcomes` (ts_utc, zone, y_da, y_rt). Returns x joined with y_da, y_rt."""
     x = x[x["delivery_date"] >= start]
-    day_start = x["delivery_date"].dt.tz_localize("America/New_York").dt.tz_convert("UTC")
-    x = x[pd.to_datetime(x["created_utc"], utc=True) < day_start].merge(outcomes, on=["ts_utc", "zone"], how="left")
+    deadline = ((x["delivery_date"] - pd.Timedelta(days=1)).dt.tz_localize("America/New_York")
+                + pd.Timedelta(hours=ISSUE_HOUR_ET)).dt.tz_convert("UTC")
+    x = x[pd.to_datetime(x["created_utc"], utc=True) <= deadline].merge(outcomes, on=["ts_utc", "zone"], how="left")
     g = x.groupby("delivery_date")
     ok = (g["zone"].size() >= ZONE_HOURS_MIN) & g["y_da"].apply(lambda s: s.notna().all()) & g["y_rt"].apply(lambda s: s.notna().all())
     return x[x["delivery_date"].isin(ok[ok].index)]
